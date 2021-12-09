@@ -129,8 +129,8 @@ def set_equations(problem):
             logger.info('solving eqn {} under condition {}'.format(eqn, cond))
             problem.add_equation(eqn, condition=cond)
 
-    boundaries = ( (True, " left(T1) = 0", "True"),
-                   (True, "right(T1_z) = 0", "True"),
+    boundaries = ( (True, " left(T1_z) = 0", "True"),
+                   (True, "right(T1) = 0", "True"),
                    (True, " left(u) = 0", "True"),
                    (True, "right(u) = 0", "True"),
                    (True, " left(w) = 0", "True"),
@@ -307,6 +307,7 @@ def run_cartesian_convection(args):
     Lx    = aspect * Lz
     Ly    = Lx
     delta = 0.05*Lz
+    delta_h = 0.2*Lz
 
     #Radiative gradient
     grad_rad = 1/(rad_m + 1)
@@ -315,7 +316,7 @@ def run_cartesian_convection(args):
     #Heating and diffusivities
     Q_mag = Ma2**(3/2)
     t_heat = 1/np.sqrt(Ma2)
-    κ     = Q_mag * delta / -(T_rad_z - T_ad_z)
+    κ     = Q_mag * delta_h / -(T_rad_z - T_ad_z)
     μ     = (Pr/Cp) * κ
 
 
@@ -364,8 +365,8 @@ def run_cartesian_convection(args):
 
     s0_z['g'] = 0
 
-    Q_func  = lambda z: zero_to_one(z, 0.7*Lz, delta)*one_to_zero(z, 0.9*Lz, delta)
-    neg_Q_func  = lambda z: -1*zero_to_one(z, 0.1*Lz, delta)*one_to_zero(z, 0.3*Lz, delta)
+    Q_func  = lambda z: zero_to_one(z, 0.9*Lz-delta_h, delta)*one_to_zero(z, 0.9*Lz, delta)
+    neg_Q_func  = lambda z: -1*zero_to_one(z, 0.1*Lz, delta)*one_to_zero(z, 0.1*Lz+delta_h, delta)
     Q['g'] = -Q_mag*(Q_func(z_de) + neg_Q_func(z_de))
     Q.antidifferentiate('z', ('right', κ), out=flux)
 
