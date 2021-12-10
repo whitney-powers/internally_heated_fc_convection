@@ -1,6 +1,6 @@
 """
 Dedalus script for convection in a fully-compressible polytrope.
-The convection is driven by an internal heating and internal cooling layer.
+The convection is driven by unstable boundaries.
 
 There are 5 control parameters:
     Ra      - The flux rayleigh number of the convection.
@@ -10,8 +10,8 @@ There are 5 control parameters:
     aspect  - The aspect ratio (Lx = aspect * Lz)
 
 Usage:
-    polytrope_IH_FC_2D.py [options] 
-    polytrope_IH_FC_2D.py <config> [options] 
+    polytrope_BD_FC_2D.py [options] 
+    polytrope_BD_FC_2D.py <config> [options] 
 
 Options:
     --Ra=<Ra>                  Flux Ra of convection [default: 1e4]
@@ -204,12 +204,9 @@ def set_subs(problem):
     problem.substitutions['grad_rad']  = '(flux/(R*κ*g))'
     problem.substitutions['grad_ad']   = '((γ-1)/γ)'
 
-    # Nu_IH defn inspired by https://ui.adsabs.harvard.edu/abs/2021arXiv211110906K/abstract
-    problem.substitutions['delta_T'] = '(right(T) - left(T))'
-    problem.substitutions['Nu_IH'] = '(delta_T_rad - delta_T_ad) / (delta_T - delta_T_ad)'
-
     problem.substitutions['phi']    = '(-g*z)'
     problem.substitutions['F_cond'] = '(-κ*T_z)'
+    problem.substitutions['F_cond_ad'] = '(-κ*T_ad_z)'
     problem.substitutions['F_enth'] = '( rho_full * w * ( Cp * T ) )'
     problem.substitutions['F_KE']   = '( rho_full * w * ( vel_rms2 / 2 ) )'
     problem.substitutions['F_PE']   = '( rho_full * w * phi )'
@@ -217,6 +214,10 @@ def set_subs(problem):
     problem.substitutions['F_conv'] = '( F_enth + F_KE + F_PE + F_visc )'
     problem.substitutions['F_tot']  = '( F_cond + F_conv )'
 
+    # Nu_IH defn inspired by https://ui.adsabs.harvard.edu/abs/2021arXiv211110906K/abstract
+    problem.substitutions['delta_T'] = '(right(T) - left(T))'
+    problem.substitutions['Nu_IH'] = '(delta_T_rad - delta_T_ad) / (delta_T - delta_T_ad)'
+    problem.substitutions['Nu_BD'] = '(F_tot - F_cond_ad)/vol_avg(F_cond - F_cond_ad)'
     return problem
 
 def initialize_output(solver, data_dir, mode='overwrite', output_dt=2, iter=np.inf):
@@ -264,7 +265,8 @@ def initialize_output(solver, data_dir, mode='overwrite', output_dt=2, iter=np.i
     scalars.add_task("vol_avg(Pe)", name="Pe")
     scalars.add_task("vol_avg(KE)", name="KE")
     scalars.add_task("vol_avg(Ma)", name="Ma")
-    scalars.add_task("vol_avg(Nu_IH)", name="Nu")
+    scalars.add_task("vol_avg(Nu_BD)", name="Nu")
+    scalars.add_task("vol_avg(Nu_IH)", name="Nu_IH")
     analysis_tasks['scalars'] = scalars
 
     checkpoint_min = 60
@@ -307,7 +309,7 @@ def run_cartesian_convection(args):
     T_ad_z = -g/Cp
 
     #Length scales
-    Lz    = np.exp(nrho/np.abs(m_ad))-1
+    Lz    = np.exp(nrho/np.abs(rad_m))-1
     Lx    = aspect * Lz
     Ly    = Lx
     delta = 0.05*Lz
@@ -322,13 +324,13 @@ def run_cartesian_convection(args):
     κ = np.sqrt(κμ * Cp / Pr)
     μ = Pr * κ / Cp
     Q_mag = κ * -(T_rad_z - T_ad_z) / delta_h
-    Ma = Q_mag**(1/3)
-    t_heat = 1/Ma
+    Ma = np.sqrt(np.abs(T_rad_z - T_ad_z)*Lz)
+    t_buoy = 1/Ma
 
     #Adjust to account for expected velocities. and larger m = 0 diffusivities.
     logger.info("Running polytrope with the following parameters:")
     logger.info("   m = {:.3f}, Ra = {:.3e}, Pr = {:.2g}, resolution = {}x{}, aspect = {}".format(rad_m, Ra, Pr, nx, nz, aspect))
-    logger.info("   heating timescale: {:8.3e}, kappa = {:.3e}, mu = {:.3e}".format(t_heat, κ, μ))
+    logger.info("   buoy timescale: {:8.3e}, kappa = {:.3e}, mu = {:.3e}".format(t_buoy, κ, μ))
     
     ###########################################################################################################3
     ### 3. Setup Dedalus domain, problem, and substitutions/parameters
@@ -373,19 +375,17 @@ def run_cartesian_convection(args):
 
     #Adiabatic polytropic stratification
     T0_zz['g'] = 0        
-    T0_z['g'] = T_ad_z
+    T0_z['g'] = T_rad_z
     T0['g'] = (1 - T_ad_z*(Lz - z_de))
 
-    rho0['g']         = T0['g']**m_ad
+    rho0['g']         = T0['g']**rad_m
     ln_rho0['g']      = np.log(rho0['g'])
     ln_rho0.differentiate('z', out=grad_ln_rho0)
 
-    s0_z['g'] = 0
+    s0_z['g'] = (Cv*np.log(T0) - ln_rho0).evaluate()['g']
 
-    Q_func  = lambda z: zero_to_one(z, 0.9*Lz-delta_h, delta)*one_to_zero(z, 0.9*Lz, delta)
-    neg_Q_func  = lambda z: -1*zero_to_one(z, 0.1*Lz, delta)*one_to_zero(z, 0.1*Lz+delta_h, delta)
-    Q['g'] = -Q_mag*(Q_func(z_de) + neg_Q_func(z_de))
-    Q.antidifferentiate('z', ('right', κ), out=flux)
+    Q['g'] = 0
+    Q.antidifferentiate('z', ('right', -κ*T_rad_z), out=flux)
 
     #Plug in default parameters
     ones = domain.new_field()
@@ -450,7 +450,7 @@ def run_cartesian_convection(args):
     ###########################################################################
     ### 5. Set simulation stop parameters, output, and CFL
     t_therm = Lz**2/κ
-    max_dt = 0.1*t_heat
+    max_dt = 0.1*t_buoy
     if dt is None:
         dt = max_dt
 
@@ -461,18 +461,18 @@ def run_cartesian_convection(args):
 
     run_time_ff   = float(args['--run_time_ff'])
     run_time_wall = float(args['--run_time_wall'])
-    solver.stop_sim_time  = run_time_ff*t_heat
+    solver.stop_sim_time  = run_time_ff*t_buoy
     solver.stop_wall_time = run_time_wall*3600.
  
     ###########################################################################
     ### 6. Setup output tasks; run main loop.
-    analysis_tasks = initialize_output(solver, data_dir, mode=mode, output_dt=0.1*t_heat)
+    analysis_tasks = initialize_output(solver, data_dir, mode=mode, output_dt=0.1*t_buoy)
 
     flow = flow_tools.GlobalFlowProperty(solver, cadence=1)
     flow.add_property("Re", name='Re')
     flow.add_property("Pe", name='Pe')
     flow.add_property("Ma", name='Ma')
-    flow.add_property("Nu_IH", name='Nu')
+    flow.add_property("Nu_BD", name='Nu')
 
     Hermitian_cadence = 100
 
@@ -494,7 +494,7 @@ def run_cartesian_convection(args):
                     Re_avg = flow.grid_average('Re')
 
                     log_string =  'Iteration: {:7d}, '.format(solver.iteration)
-                    log_string += 'Time: {:8.3e} heat ({:8.3e} therm), dt: {:8.3e}, dt/t_h: {:8.3e}, '.format(solver.sim_time/t_heat, solver.sim_time/t_therm,  dt, dt/t_heat)
+                    log_string += 'Time: {:8.3e} buoy ({:8.3e} therm), dt: {:8.3e}, dt/t_h: {:8.3e}, '.format(solver.sim_time/t_buoy, solver.sim_time/t_therm,  dt, dt/t_buoy)
                     log_string += 'Pe: {:8.3e}/{:8.3e}, '.format(flow.grid_average('Pe'), flow.max('Pe'))
                     log_string += 'Ma: {:8.3e}/{:8.3e}, '.format(flow.grid_average('Ma'), flow.max('Ma'))
                     log_string += 'Nu: {:8.3e}, '.format(flow.grid_average('Nu'))
