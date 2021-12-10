@@ -25,6 +25,7 @@ echo "Processing $DIR on $NCORE cores"
 
 mpiexec_mpt -n $NCORE python3 plot_rolled_structure.py $DIR
 mpiexec_mpt -n $NCORE python3 plot_slices.py $DIR
+mpiexec_mpt -n 1 python3 plot_scalar_traces.py $DIR
 
 cd $DIR
 $OLDPWD/png2mp4.sh rolled_structure/ rolled_structure.mp4 30
