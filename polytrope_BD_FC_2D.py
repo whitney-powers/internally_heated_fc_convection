@@ -324,8 +324,7 @@ def run_cartesian_convection(args):
     κ = np.sqrt(κμ * Cp / Pr)
     μ = Pr * κ / Cp
     Q_mag = κ * -(T_rad_z - T_ad_z) / delta_h
-    Ma = np.sqrt(np.abs(T_rad_z - T_ad_z)*Lz)
-    t_buoy = 1/Ma
+    t_buoy = np.sqrt(Lz * rad_m * Cp / (g * (m_ad - rad_m) * nrho ))
 
     #Adjust to account for expected velocities. and larger m = 0 diffusivities.
     logger.info("Running polytrope with the following parameters:")
@@ -439,7 +438,7 @@ def run_cartesian_convection(args):
             f.set_scales(domain.dealias, keep_data=True)
 
         noise = global_noise(domain, int(args['--seed']))
-        T1['g'] = 1e-3*Ma*np.sin(np.pi*(z_de))*noise['g']
+        T1['g'] = 1e-3*(1/t_buoy)**2*np.sin(np.pi*(z_de))*noise['g']
         T1.differentiate('z', out=T1_z)
         dt = None
     else:
