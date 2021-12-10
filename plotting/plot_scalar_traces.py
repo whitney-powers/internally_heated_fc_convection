@@ -41,7 +41,8 @@ figs = []
 # Nu vs time
 fig1 = ScalarFigure(num_rows=3, num_cols=1, col_inch=6, fig_name='fundamentals')
 fig1.add_field(0, 'Re')
-fig1.add_field(1, 'Pe')
+fig1.add_field(0, 'Pe')
+fig1.add_field(1, 'Nu_IH', log=True)
 fig1.add_field(2, 'Ma')
 figs.append(fig1)
 

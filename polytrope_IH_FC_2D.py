@@ -3,7 +3,7 @@ Dedalus script for convection in a fully-compressible polytrope.
 The convection is driven by an internal heating and internal cooling layer.
 
 There are 5 control parameters:
-    Ma      - The mach number of the convection.
+    Ra      - The flux rayleigh number of the convection.
     m       - The polytropic index of the radiative state
     Pr      - The Prandtl number = (viscous diffusivity / thermal diffusivity)
     nrho    - The height of the box
@@ -14,7 +14,7 @@ Usage:
     polytrope_IH_FC_2D.py <config> [options] 
 
 Options:
-    --Ma2=<Ma2>                Mach^2 of convection [default: 1e-1]
+    --Ra=<Ra>                  Mach^2 of convection [default: 1e2]
     --m=<m>                    The polytropic index of the radiative state [default: 1]
     --Pr=<Prandtl>             Prandtl number = nu/kappa [default: 1]
     --nrho=<n>                 Depth of domain [default: 1]
@@ -119,10 +119,10 @@ def set_equations(problem):
     equations = ( (True, "True", "T1_z - dz(T1) = 0"),
                   (True, "True", "u_z - dz(u)   = 0"),
                   (True, "True", "w_z - dz(w)   = 0"),
-                  (True, "True", "dt(ln_rho1) + Div_u + w*grad_ln_rho0 = -UdotGrad(ln_rho1, dz(ln_rho1))"), #Continuity
+                  (True, "True", "T0*(dt(ln_rho1) + Div_u + w*grad_ln_rho0) = -T0*UdotGrad(ln_rho1, dz(ln_rho1))"), #Continuity
                   (True, "True", "dt(u) - visc_L_x  + R*( dx(T1) + T0*dx(ln_rho1)                  ) = -UdotGrad(u, u_z) - R*T1*dx(ln_rho1) + visc_R_x "), #momentum-x
-                  (True, "True", "dt(w) - visc_L_z  + R*( T1_z  + T1*grad_ln_rho0 + T0*dz(ln_rho1) ) = -UdotGrad(w, w_z) - R*T1*dz(ln_rho1) + visc_R_z "), #momentum-z
-                  (True, "True", "dt(T1) + w*T0_z + (γ-1)*T0*Div_u - diff_L = -UdotGrad(T1, T1_z) - (γ-1)*T1*Div_u + visc_heat + diff_R"), #energy eqn
+                  (True, "True", "T0*(dt(w) - visc_L_z  + R*( T1_z  + T1*grad_ln_rho0 + T0*dz(ln_rho1) ) ) = T0*(-UdotGrad(w, w_z) - R*T1*dz(ln_rho1) + visc_R_z )"), #momentum-z
+                  (True, "True", "T0*(dt(T1) + w*T0_z + (γ-1)*T0*Div_u - diff_L ) = T0*(-UdotGrad(T1, T1_z) - (γ-1)*T1*Div_u + visc_heat + diff_R)"), #energy eqn
                 )
     for solve, cond, eqn in equations:
         if solve:
@@ -204,6 +204,10 @@ def set_subs(problem):
     problem.substitutions['grad_rad']  = '(flux/(R*κ*g))'
     problem.substitutions['grad_ad']   = '((γ-1)/γ)'
 
+    # Nu_IH defn inspired by https://ui.adsabs.harvard.edu/abs/2021arXiv211110906K/abstract
+    problem.substitutions['delta_T'] = '(right(T) - left(T))'
+    problem.substitutions['Nu_IH'] = '(delta_T_rad - delta_T_ad) / (delta_T - delta_T_ad)'
+
     problem.substitutions['phi']    = '(-g*z)'
     problem.substitutions['F_cond'] = '(-κ*T_z)'
     problem.substitutions['F_enth'] = '( rho_full * w * ( Cp * T ) )'
@@ -260,6 +264,7 @@ def initialize_output(solver, data_dir, mode='overwrite', output_dt=2, iter=np.i
     scalars.add_task("vol_avg(Pe)", name="Pe")
     scalars.add_task("vol_avg(KE)", name="KE")
     scalars.add_task("vol_avg(Ma)", name="Ma")
+    scalars.add_task("vol_avg(Nu_IH)", name="Nu_IH")
     analysis_tasks['scalars'] = scalars
 
     checkpoint_min = 60
@@ -273,7 +278,7 @@ def run_cartesian_convection(args):
     #############################################################################################
     ### 1. Read in command-line args, set up data directory
     data_dir = args['--root_dir'] + '/' + sys.argv[0].split('.py')[0]
-    data_dir += "_Ma2{}_m{}_nrho{}_Pr{}_a{}_{}x{}".format(args['--Ma2'], args['--m'], args['--nrho'], args['--Pr'], args['--aspect'], args['--nx'], args['--nz'])
+    data_dir += "_Ra{}_m{}_nrho{}_Pr{}_a{}_{}x{}".format(args['--Ra'], args['--m'], args['--nrho'], args['--Pr'], args['--aspect'], args['--nx'], args['--nz'])
     if args['--label'] is not None:
         data_dir += "_{}".format(args['--label'])
     data_dir += '/'
@@ -287,11 +292,10 @@ def run_cartesian_convection(args):
     aspect   = float(args['--aspect'])
     nx = int(args['--nx'])
     nz = int(args['--nz'])
-    Ma2 = float(args['--Ma2'])
+    Ra = float(args['--Ra'])
     Pr = float(args['--Pr'])
     rad_m = float(args['--m'])
     nrho = float(args['--nrho'])
-    Ma2 = float(args['--Ma2']) #timescale ~ 1/Q^{1/3}, Ma ~ 1/t, so Q ~ (Ma^2)^{3/2} ~ Ma^3
 
     # Thermo
     gamma = 5/3
@@ -314,15 +318,16 @@ def run_cartesian_convection(args):
     T_rad_z = - grad_rad * (g / R)
 
     #Heating and diffusivities
-    Q_mag = Ma2**(3/2)
-    t_heat = 1/np.sqrt(Ma2)
-    κ     = Q_mag * delta_h / -(T_rad_z - T_ad_z)
-    μ     = (Pr/Cp) * κ
-
+    κμ = g * Lz**4 * np.abs(T_rad_z - T_ad_z) / Ra #Pr = mu * cp / kappa, so  mu kappa = Pr * kappa**2 / cp
+    κ = np.sqrt(κμ * Cp / Pr)
+    μ = Pr * κ / Cp
+    Q_mag = κ * -(T_rad_z - T_ad_z) / delta_h
+    Ma = Q_mag**(1/3)
+    t_heat = 1/Ma
 
     #Adjust to account for expected velocities. and larger m = 0 diffusivities.
     logger.info("Running polytrope with the following parameters:")
-    logger.info("   m = {:.3f}, Ma2 = {:.3e}, Pr = {:.2g}, resolution = {}x{}, aspect = {}".format(rad_m, Ma2, Pr, nx, nz, aspect))
+    logger.info("   m = {:.3f}, Ra = {:.3e}, Pr = {:.2g}, resolution = {}x{}, aspect = {}".format(rad_m, Ra, Pr, nx, nz, aspect))
     logger.info("   heating timescale: {:8.3e}, kappa = {:.3e}, mu = {:.3e}".format(t_heat, κ, μ))
     
     ###########################################################################################################3
@@ -344,15 +349,27 @@ def run_cartesian_convection(args):
     rho0         = domain.new_field()
     ln_rho0      = domain.new_field()
     s0_z         = domain.new_field()
+    T_ad_f   = domain.new_field()
+    T_ad_z_f = domain.new_field()
+    T_rad_f   = domain.new_field()
+    T_rad_z_f = domain.new_field()
     T0   = domain.new_field()
     T0_z = domain.new_field()
     T0_zz = domain.new_field()
     Q = domain.new_field()
     flux = domain.new_field()
-    for f in [ln_rho0, grad_ln_rho0, rho0, s0_z, T0, T0_z, T0_zz, Q]:
+    for f in [ln_rho0, grad_ln_rho0, rho0, s0_z, T0, T0_z, T0_zz, Q, T_ad_f, T_ad_z_f, T_rad_f, T_rad_z_f]:
         f.set_scales(domain.dealias)
     for f in [ln_rho0, grad_ln_rho0, T0, T0_z, rho0]:
         f.meta['x']['constant'] = True
+
+    #radiative and adiabatic temp profiles
+    T_ad_z_f['g'] = T_ad_z
+    T_rad_z_f['g'] = T_rad_z
+    T_ad_z_f.antidifferentiate('z', ('right', 1), out=T_ad_f)
+    T_rad_z_f.antidifferentiate('z', ('right', 1), out=T_rad_f)
+    delta_T_rad = (T_rad_f.interpolate(z=Lz) - T_rad_f.interpolate(z=0)).evaluate()['g'].min()
+    delta_T_ad  = (T_ad_f.interpolate(z=Lz) - T_ad_f.interpolate(z=0)).evaluate()['g'].min()
 
     #Adiabatic polytropic stratification
     T0_zz['g'] = 0        
@@ -393,6 +410,8 @@ def run_cartesian_convection(args):
     problem.parameters['Cv'] = Cv
     problem.parameters['T_ad_z'] = T_ad_z
     problem.parameters['flux'] = flux
+    problem.parameters['delta_T_ad'] = delta_T_ad
+    problem.parameters['delta_T_rad'] = delta_T_rad
 
     problem = set_subs(problem)
     problem = set_equations(problem)
@@ -420,7 +439,7 @@ def run_cartesian_convection(args):
             f.set_scales(domain.dealias, keep_data=True)
 
         noise = global_noise(domain, int(args['--seed']))
-        T1['g'] = 1e-3*np.sqrt(Ma2)*np.sin(np.pi*(z_de))*noise['g']
+        T1['g'] = 1e-3*Ma*np.sin(np.pi*(z_de))*noise['g']
         T1.differentiate('z', out=T1_z)
         dt = None
     else:
@@ -453,6 +472,7 @@ def run_cartesian_convection(args):
     flow.add_property("Re", name='Re')
     flow.add_property("Pe", name='Pe')
     flow.add_property("Ma", name='Ma')
+    flow.add_property("Nu_IH", name='Nu')
 
     Hermitian_cadence = 100
 
@@ -477,6 +497,7 @@ def run_cartesian_convection(args):
                     log_string += 'Time: {:8.3e} heat ({:8.3e} therm), dt: {:8.3e}, dt/t_h: {:8.3e}, '.format(solver.sim_time/t_heat, solver.sim_time/t_therm,  dt, dt/t_heat)
                     log_string += 'Pe: {:8.3e}/{:8.3e}, '.format(flow.grid_average('Pe'), flow.max('Pe'))
                     log_string += 'Ma: {:8.3e}/{:8.3e}, '.format(flow.grid_average('Ma'), flow.max('Ma'))
+                    log_string += 'Nu: {:8.3e}, '.format(flow.grid_average('Nu'))
                     logger.info(log_string)
 
                 dt = CFL.compute_dt()

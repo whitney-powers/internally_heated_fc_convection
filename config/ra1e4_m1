@@ -1,5 +1,5 @@
 [parameters]
-Ma2 = 1e-2 
+Ra = 1e4
 m = 1
 Pr = 1
 nrho = 1
