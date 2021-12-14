@@ -1,5 +1,5 @@
 [parameters]
-Ra = 1e6
+Ra = 1e8
 m = 1
 Pr = 1
 nrho = 1

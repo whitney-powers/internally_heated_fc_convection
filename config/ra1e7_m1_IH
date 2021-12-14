@@ -1,11 +1,11 @@
 [parameters]
-Ra = 1e6
+Ra = 1e7
 m = 1
 Pr = 1
 nrho = 1
 aspect = 4
-nz = 128
-nx = 256
+nz = 64
+nx = 128
 safety = 0.75
 run_time_wall = 23.5
 run_time_ff = 1000
