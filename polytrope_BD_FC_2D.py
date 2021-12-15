@@ -217,7 +217,7 @@ def set_subs(problem):
     # Nu_IH defn inspired by https://ui.adsabs.harvard.edu/abs/2021arXiv211110906K/abstract
     problem.substitutions['delta_T'] = '(right(T) - left(T))'
     problem.substitutions['Nu_IH'] = '(delta_T_rad - delta_T_ad) / (delta_T - delta_T_ad)'
-    problem.substitutions['Nu_BD'] = '(F_tot - F_cond_ad)/vol_avg(F_cond - F_cond_ad)'
+    problem.substitutions['Nu_BD'] = '1+F_conv/vol_avg(F_cond-F_cond_ad)'
     return problem
 
 def initialize_output(solver, data_dir, mode='overwrite', output_dt=2, iter=np.inf):

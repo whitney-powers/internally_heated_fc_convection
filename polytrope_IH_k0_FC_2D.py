@@ -459,7 +459,7 @@ def run_cartesian_convection(args):
             f.set_scales(domain.dealias, keep_data=True)
 
         noise = global_noise(domain, int(args['--seed']))
-        T1['g'] = 1e-3*np.sqrt(Ma)*np.sin(np.pi*(z_de))*noise['g']
+        T1['g'] = 1e-3*Ma**2*np.sin(np.pi*(z_de))*noise['g']
         T1.differentiate('z', out=T1_z)
         dt = None
     else:
