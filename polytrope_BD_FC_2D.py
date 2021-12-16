@@ -375,7 +375,7 @@ def run_cartesian_convection(args):
     #Adiabatic polytropic stratification
     T0_zz['g'] = 0        
     T0_z['g'] = T_rad_z
-    T0['g'] = (1 - T_ad_z*(Lz - z_de))
+    T0['g'] = (1 - T_rad_z*(Lz - z_de))
 
     rho0['g']         = T0['g']**rad_m
     ln_rho0['g']      = np.log(rho0['g'])
