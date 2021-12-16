@@ -51,7 +51,7 @@ grad_T_ad = -g/Cp
 
 delta_grad_T = grad_T_rad - grad_T_ad
 
-m0 = 1/(m_rad+1) * (-grad_T_rad*Lz**2 + 2*Lz)
+m0 = (1-(1-grad_T_rad*Lz)**(m+1)) / ((m+1)*grad_T_rad)
 
 T = domain.new_field()
 Tz = domain.new_field()
