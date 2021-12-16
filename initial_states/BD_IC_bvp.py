@@ -110,8 +110,13 @@ T1 = (T-T0).evaluate()
 ln_rho1 = (ln_rho-ln_rho0).evaluate()
 T1.set_scales(1, keep_data=True)
 ln_rho1.set_scales(1, keep_data=True)
+T0.set_scales(1, keep_data=True)
+ln_rho0.set_scales(1, keep_data=True)
+
 
 with h5py.File('atmosphere.h5', 'w') as f:
     f['z'] = z
     f['ln_rho1'] = ln_rho1['g']
     f['T1'] = T1['g']
+    f['T0'] = T0['g']
+    f['ln_rho0'] = ln_rho0['g']
