@@ -216,7 +216,8 @@ def set_subs(problem):
     problem.substitutions['F_visc'] = '( - μ * ( u*σxz + v*σyz + w*σzz ) )'
     problem.substitutions['F_conv'] = '( F_enth + F_KE + F_PE + F_visc )'
     problem.substitutions['F_tot']  = '( F_cond + F_conv )'
-
+    problem.substitutions['F_dif_top']  = 'right( flux - F_tot)'
+    
     return problem
 
 def initialize_output(solver, data_dir, mode='overwrite', output_dt=2, iter=np.inf):
@@ -472,7 +473,7 @@ def run_cartesian_convection(args):
     flow.add_property("Pe", name='Pe')
     flow.add_property("Ma", name='Ma')
     flow.add_property("Nu_IH", name='Nu')
-
+    flow.add_property("F_dif_top", name='F_dif_top')
     Hermitian_cadence = 100
 
     def main_loop(dt):
@@ -497,6 +498,7 @@ def run_cartesian_convection(args):
                     log_string += 'Pe: {:8.3e}/{:8.3e}, '.format(flow.grid_average('Pe'), flow.max('Pe'))
                     log_string += 'Ma: {:8.3e}/{:8.3e}, '.format(flow.grid_average('Ma'), flow.max('Ma'))
                     log_string += 'Nu: {:8.3e}, '.format(flow.grid_average('Nu'))
+                    log_string += 'F_dif_top: {:8.3e}'.format(flow.grid_average('F_dif_top'))
                     logger.info(log_string)
 
                 dt = CFL.compute_dt()
