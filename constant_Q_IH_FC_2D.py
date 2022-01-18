@@ -204,10 +204,12 @@ def set_subs(problem):
     problem.substitutions['grad_rad']  = '(flux/(R*κ*g))'
     problem.substitutions['grad_ad']   = '((γ-1)/γ)'
 
+    # Old IH boundary layer Nu
     # Nu_IH defn inspired by https://ui.adsabs.harvard.edu/abs/2021arXiv211110906K/abstract
     problem.substitutions['delta_T'] = '(right(T) - left(T))'
-    problem.substitutions['Nu_IH'] = '(delta_T_rad - delta_T_ad) / (delta_T - delta_T_ad)'
+    #problem.substitutions['Nu_IH'] = '(delta_T_rad - delta_T_ad) / (delta_T - delta_T_ad)'
 
+    
     problem.substitutions['phi']    = '(-g*z)'
     problem.substitutions['F_cond'] = '(-κ*T_z)'
     problem.substitutions['F_enth'] = '( rho_full * w * ( Cp * T ) )'
@@ -217,6 +219,10 @@ def set_subs(problem):
     problem.substitutions['F_conv'] = '( F_enth + F_KE + F_PE + F_visc )'
     problem.substitutions['F_tot']  = '( F_cond + F_conv )'
     problem.substitutions['F_dif_top']  = 'right( flux - F_tot)'
+
+    # Anders & Brown 2017 Nusselt Number
+    problem.substitutions['F_A']     = '(-κ*(-g/Cp))'
+    problem.substitutions['Nu_IH']  = '( 1 + F_conv/(F_cond - F_A))'
     
     return problem
 
