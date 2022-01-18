@@ -222,7 +222,7 @@ def set_subs(problem):
 
     # Anders & Brown 2017 Nusselt Number
     problem.substitutions['F_A']     = '(-κ*(-g/Cp))'
-    problem.substitutions['Nu_IH']  = '( 1 + F_conv/(F_cond - F_A))'
+    problem.substitutions['Nu_IH']  = '( 1 + vol_avg(F_conv)/vol_avg(F_cond - F_A))'
     
     return problem
 
@@ -501,9 +501,9 @@ def run_cartesian_convection(args):
 
                     log_string =  'Iteration: {:7d}, '.format(solver.iteration)
                     log_string += 'Time: {:8.3e} heat ({:8.3e} therm), dt: {:8.3e}, dt/t_h: {:8.3e}, '.format(solver.sim_time/t_heat, solver.sim_time/t_therm,  dt, dt/t_heat)
-                    log_string += 'Pe: {:8.3e}/{:8.3e}, '.format(flow.grid_average('Pe'), flow.max('Pe'))
-                    log_string += 'Ma: {:8.3e}/{:8.3e}, '.format(flow.grid_average('Ma'), flow.max('Ma'))
-                    log_string += 'Nu: {:8.3e}, '.format(flow.grid_average('Nu'))
+                    log_string += 'Pe: {:8.3e}/{:8.3e}, '.format(flow.volume_average('Pe'), flow.max('Pe'))
+                    log_string += 'Ma: {:8.3e}/{:8.3e}, '.format(flow.volume_average('Ma'), flow.max('Ma'))
+                    log_string += 'Nu: {:8.3e}, '.format(flow.volume_average('Nu'))
                     log_string += 'F_dif_top: {:8.3e}'.format(flow.grid_average('F_dif_top'))
                     logger.info(log_string)
 
