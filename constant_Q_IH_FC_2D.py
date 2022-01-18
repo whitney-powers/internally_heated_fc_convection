@@ -218,7 +218,7 @@ def set_subs(problem):
     problem.substitutions['F_visc'] = '( - μ * ( u*σxz + v*σyz + w*σzz ) )'
     problem.substitutions['F_conv'] = '( F_enth + F_KE + F_PE + F_visc )'
     problem.substitutions['F_tot']  = '( F_cond + F_conv )'
-    problem.substitutions['F_dif_top']  = 'right( flux - F_tot)'
+    problem.substitutions['F_dif_top']  = 'right( (flux - F_tot)/flux)'
 
     # Anders & Brown 2017 Nusselt Number
     problem.substitutions['F_A']     = '(-κ*(-g/Cp))'
