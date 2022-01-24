@@ -1,0 +1,11 @@
+[parameters]
+Ra = 1e5
+epsilon = 0.5
+Pr = 1
+nrho = 3
+aspect = 4
+nz = 128
+nx = 256
+safety = 0.75
+run_time_wall = 23.5
+run_time_ff = 10000
