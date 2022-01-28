@@ -449,9 +449,9 @@ def run_cartesian_convection(args):
         T1.differentiate('z', out=T1_z)
         dt = None
     else:
-#        write, dt = solver.load_state(args['--restart'], -1) 
+        write, dt = solver.load_state(args['--restart'], -1) 
         mode = 'append'
-        raise NotImplementedError('need to implement checkpointing')
+#        raise NotImplementedError('need to implement checkpointing')
 
     ###########################################################################
     ### 5. Set simulation stop parameters, output, and CFL
