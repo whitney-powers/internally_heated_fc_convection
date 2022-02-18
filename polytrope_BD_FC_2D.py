@@ -30,6 +30,7 @@ Options:
     --run_time_ff=<time>       Run time, in freefall times [default: 1.6e3]
 
     --restart=<restart_file>   Restart from checkpoint
+    --IC=<IC>                  Load initial conditions from nlbvp output file
     --seed=<seed>              RNG seed for initial conditions [default: 42]
 
     --label=<label>            Optional additional case name label
@@ -430,7 +431,7 @@ def run_cartesian_convection(args):
     ###########################################################################
     ### 4. Set initial conditions or read from checkpoint.
     mode = 'overwrite'
-    if args['--restart'] is None:
+    if (args['--restart'] is None) and (args['--IC'] is None):
         T1 = solver.state['T1']
         T1_z = solver.state['T1_z']
         z_de = domain.grid(-1, scales=domain.dealias)
@@ -438,13 +439,38 @@ def run_cartesian_convection(args):
             f.set_scales(domain.dealias, keep_data=True)
 
         noise = global_noise(domain, int(args['--seed']))
-        T1['g'] = 1e-3*(1/t_buoy)**2*np.sin(np.pi*(z_de))*noise['g']
+        T1['g'] = 1e-3*(1/t_buoy)**2*np.sin(np.pi*(z_de)/Lz)*noise['g']
         T1.differentiate('z', out=T1_z)
         dt = None
-    else:
+    
+    elif not(args['--restart'] is None) and (args['--IC'] is None):
 #        write, dt = solver.load_state(args['--restart'], -1) 
         mode = 'append'
         raise NotImplementedError('need to implement checkpointing')
+    elif (args['--restart'] is None) and not(args['--IC'] is None):
+        logger.info('loading ICs from '+args['--IC'])
+        logger.info('WARNING IC file must match resolution')
+        # CHANGE this to have interpolation of the IC file 
+        
+        slices = domain.dist.grid_layout.slices(scales=1)
+        T1 = solver.state['T1']
+        T1_z = solver.state['T1_z']
+        ln_rho1 = solver.state['ln_rho1']
+        z_1 = domain.grid(-1, scales=1)
+        noise = global_noise(domain, int(args['--seed']))
+
+        for f in [T1,ln_rho1,noise]:
+            f.set_scales(1, keep_data=True)
+        
+        with h5py.File(args['--IC'],'r') as f:
+            T1['g'] = 1e-3*(1/t_buoy)**2*np.sin(np.pi*(z_1)/Lz)*noise['g']+f['T1'][slices[-1]][None,:]
+            ln_rho1['g'] = f['ln_rho1'][slices[-1]][None,:]
+            print(MPI.COMM_WORLD.rank,1e-3*(1/t_buoy)**2*np.sin(np.pi*(z_1))*noise['g'])
+        T1.differentiate('z', out=T1_z)
+        dt=None
+        
+    else:
+        raise NotImplementedError('Cannot specify both checkpoint and nlbvp ICs') 
 
     ###########################################################################
     ### 5. Set simulation stop parameters, output, and CFL
