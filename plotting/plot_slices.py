@@ -45,7 +45,7 @@ plotter = SlicePlotter(root_dir, file_dir='slices', out_name=fig_name, start_fil
 plotter_kwargs = { 'col_inch' : int(args['--col_inch']), 'row_inch' : int(args['--row_inch'])}
 plotter.setup_grid(num_rows=1, num_cols=2, **plotter_kwargs)
 bases_kwargs = { 'x_basis' : 'x', 'y_basis' : 'z' }
-plotter.add_colormesh('s1', remove_x_mean=True, label='s1 - horiz_avg(s1)', **bases_kwargs)
-plotter.add_colormesh('enstrophy', cmap='Purples_r', **bases_kwargs)
+plotter.add_colormesh('s1', remove_x_mean=True, label='s1 / horiz_avg(s1) - 1', **bases_kwargs, cmap_exclusion=0.005 , divide_x_mean = True)
+plotter.add_colormesh('Ma', cmap='inferno', pos_def=True, **bases_kwargs)
 
 plotter.plot_colormeshes(start_fig=start_fig, dpi=int(args['--dpi']))

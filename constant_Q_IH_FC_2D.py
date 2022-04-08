@@ -10,8 +10,8 @@ There are 5 control parameters:
     aspect  - The aspect ratio (Lx = aspect * Lz)
 
 Usage:
-    polytrope_IH_FC_2D.py [options] 
-    polytrope_IH_FC_2D.py <config> [options] 
+    constant_Q_IH_FC_2D.py [options] 
+    constant_Q_IH_FC_2D.py <config> [options] 
 
 Options:
     --Ra=<Ra>                  Flux Ra of convection [default: 1e4]
@@ -204,12 +204,8 @@ def set_subs(problem):
     problem.substitutions['grad_rad']  = '(flux/(R*κ*g))'
     problem.substitutions['grad_ad']   = '((γ-1)/γ)'
 
-    # Old IH boundary layer Nu
-    # Nu_IH defn inspired by https://ui.adsabs.harvard.edu/abs/2021arXiv211110906K/abstract
     problem.substitutions['delta_T'] = '(right(T) - left(T))'
-    #problem.substitutions['Nu_IH'] = '(delta_T_rad - delta_T_ad) / (delta_T - delta_T_ad)'
-
-    
+        
     problem.substitutions['phi']    = '(-g*z)'
     problem.substitutions['F_cond'] = '(-κ*T_z)'
     problem.substitutions['F_enth'] = '( rho_full * w * ( Cp * T ) )'
@@ -320,9 +316,9 @@ def run_cartesian_convection(args):
     Lx    = aspect * Lz
     Ly    = Lx
     delta = 0.05*Lz
-    delta_h = 0.2*Lz
+    
 
-    #Radiative gradient
+    #Radiative gradient (polytrope)
     rad_m = m_ad - epsilon
     grad_rad = 1/(rad_m + 1)
     T_rad_z = - grad_rad * (g / R)
@@ -331,7 +327,7 @@ def run_cartesian_convection(args):
     κμ = g * Lz**4 * np.abs(T_rad_z - T_ad_z) / Ra #Pr = mu * cp / kappa, so  mu kappa = Pr * kappa**2 / cp
     κ = np.sqrt(κμ * Cp / Pr)
     μ = Pr * κ / Cp
-    Q_mag = κ * -(T_rad_z - T_ad_z) / delta_h
+    Q_mag = κ/Lz * epsilon/(1+m_ad-epsilon)
     Ma = Q_mag**(1/3)
     t_heat = 1/Ma
 
@@ -359,28 +355,18 @@ def run_cartesian_convection(args):
     rho0         = domain.new_field()
     ln_rho0      = domain.new_field()
     s0_z         = domain.new_field()
-    T_ad_f   = domain.new_field()
-    T_ad_z_f = domain.new_field()
-    T_rad_f   = domain.new_field()
-    T_rad_z_f = domain.new_field()
     T0   = domain.new_field()
     T0_z = domain.new_field()
     T0_zz = domain.new_field()
     Q = domain.new_field()
     flux = domain.new_field()
-    for f in [ln_rho0, grad_ln_rho0, rho0, s0_z, T0, T0_z, T0_zz, Q, T_ad_f, T_ad_z_f, T_rad_f, T_rad_z_f]:
+    for f in [ln_rho0, grad_ln_rho0, rho0, s0_z, T0, T0_z, T0_zz, Q]:
         f.set_scales(domain.dealias)
     for f in [ln_rho0, grad_ln_rho0, T0, T0_z, rho0]:
         f.meta['x']['constant'] = True
 
     #radiative and adiabatic temp profiles
-    T_ad_z_f['g'] = T_ad_z
-    T_rad_z_f['g'] = T_rad_z
-    T_ad_z_f.antidifferentiate('z', ('right', 1), out=T_ad_f)
-    T_rad_z_f.antidifferentiate('z', ('right', 1), out=T_rad_f)
-    delta_T_rad = (T_rad_f.interpolate(z=Lz) - T_rad_f.interpolate(z=0)).evaluate()['g'].min()
-    delta_T_ad  = (T_ad_f.interpolate(z=Lz) - T_ad_f.interpolate(z=0)).evaluate()['g'].min()
-
+            
     #Adiabatic polytropic stratification
     T0_zz['g'] = 0        
     T0_z['g'] = T_ad_z
@@ -392,7 +378,7 @@ def run_cartesian_convection(args):
 
     s0_z['g'] = 0
 
-    Q['g'] = κ/Lz * epsilon/(1+m_ad-epsilon)
+    Q['g'] = Q_mag
     Q.antidifferentiate('z', ('left', -κ*T_ad_z), out=flux)
 
     #Plug in default parameters
@@ -418,9 +404,7 @@ def run_cartesian_convection(args):
     problem.parameters['Cv'] = Cv
     problem.parameters['T_ad_z'] = T_ad_z
     problem.parameters['flux'] = flux
-    problem.parameters['delta_T_ad'] = delta_T_ad
-    problem.parameters['delta_T_rad'] = delta_T_rad
-
+    
     problem = set_subs(problem)
     problem = set_equations(problem)
 
@@ -527,7 +511,7 @@ def run_cartesian_convection(args):
                 final_checkpoint = solver.evaluator.add_file_handler(data_dir+'final_checkpoint', wall_dt=np.inf, sim_dt=np.inf, iter=1, max_writes=1)
                 final_checkpoint.add_system(solver.state, layout = 'c')
                 solver.step(1e-5*dt) #clean this up in the future...works for now.
-                post.merge_process_files(data_dir+'/final_checkpoint/', cleanup=False)
+                post.merge_process_files(data_dir+'/final_checkpoint/', cleanup=True)
             except:
                 raise
                 print('cannot save final checkpoint')

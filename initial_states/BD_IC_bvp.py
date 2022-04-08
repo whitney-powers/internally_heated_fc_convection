@@ -26,7 +26,7 @@ def zero_to_one(*args, **kwargs):
 
 
 # Parameters
-Nz = 128
+Nz = 1024
 ncc_cutoff = 1e-6
 tolerance = 1e-12
 m_rad = 1
