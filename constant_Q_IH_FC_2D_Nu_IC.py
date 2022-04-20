@@ -10,8 +10,8 @@ There are 5 control parameters:
     aspect  - The aspect ratio (Lx = aspect * Lz)
 
 Usage:
-    constant_Q_IH_FC_2D.py [options] 
-    constant_Q_IH_FC_2D.py <config> [options] 
+    constant_Q_IH_FC_2D_Nu_IC.py [options] 
+    constant_Q_IH_FC_2D_Nu_IC.py <config> [options] 
 
 Options:
     --Ra=<Ra>                  Flux Ra of convection [default: 1e4]
@@ -19,9 +19,6 @@ Options:
     --Pr=<Prandtl>             Prandtl number = nu/kappa [default: 1]
     --nrho=<n>                 Depth of domain [default: 3]
     --aspect=<aspect>          Aspect ratio of domain [default: 4]
-    --gamma=<gamma>            Ratio of specific heats [default: 5/3]    
-
-    --stress_free              Use stress free boundary conditions (default: no-slip)
 
     --nz=<nz>                  Vertical resolution   [default: 64]
     --nx=<nx>                  Horizontal (x) resolution [default: 128]
@@ -31,6 +28,8 @@ Options:
 
     --run_time_wall=<time>     Run time, in hours [default: 119.5]
     --run_time_ff=<time>       Run time, in freefall times [default: 1.6e3]
+
+    --Nu_IC                    Use Nu based ICs for accelerated evolution
 
     --restart=<restart_file>   Restart from checkpoint
     --seed=<seed>              RNG seed for initial conditions [default: 42]
@@ -51,7 +50,6 @@ import numpy as np
 from docopt import docopt
 from mpi4py import MPI
 from scipy.special import erf
-from fractions import Fraction
 
 from dedalus import public as de
 from dedalus.extras import flow_tools
@@ -105,7 +103,7 @@ def global_noise(domain, seed=42, **kwargs):
     # filter in k-space
     noise_field = domain.new_field()
     noise_field.set_scales(domain.dealias, keep_data=False)
-    noise_field['g'] = noise
+    noise_field['g'] = noise - np.mean(noise,axis=0) # Removes k0 component WARNING: MAY NOT WORK IN 3D
     filter_field(noise_field, **kwargs)
     return noise_field
 
@@ -115,7 +113,109 @@ def one_to_zero(x, x0, width=0.1):
 def zero_to_one(*args, **kwargs):
     return -(one_to_zero(*args, **kwargs) - 1)
 
-def set_equations(problem, stress_free):
+def Nu_based_IC(Ra, epsilon, Nz=64, nrho=3, gamma=5/3, R=1, Pr=1, Ra_crit=None, Nu_a=None, Nu_b=None): # uses old epsilon
+    logger.info('Solving for Nusselt-based initial conditions')
+    ncc_cutoff = 1e-6
+    tolerance = 1e-12
+    
+    # Stores parameters for fitted Nusselt power laws of form Nu = Nu_a * (Ra/Ra_crit)**Nu_b
+    # For each value of epsilon this returns an array of [Ra_crit, Nu_a, Nu_b]
+    param_dict = {0.1:[102.33752,0.7357,0.2048],
+                  0.5:[102.13574,0.8000,0.1996],
+                  1:[105.22871,0.8639,0.1984],
+                  1.5:[119.39250,1.0667,0.1886],
+                  2:[189.07337,1.2471,0.1923],
+                  2.2:[311.36917,1.4464,0.1971]}
+    if Ra_crit is None:
+        Ra_crit = param_dict[epsilon][0]
+    if Nu_a is None:
+        Nu_a = param_dict[epsilon][1]
+    if Nu_b is None:
+        Nu_b = param_dict[epsilon][2]
+        
+    logger.info("Ra_crit = {}, Nu_a = {}, Nu_b = {}".format(Ra_crit, Nu_a, Nu_b))
+    Cv = R/(gamma-1)
+    Cp = gamma*Cv
+    g = Cp
+    m_ad = 1/(gamma-1)
+    Lz = np.exp(nrho/m_ad)-1
+    
+    m_rad = m_ad - epsilon
+    grad_rad = 1/(m_rad+1)
+    T_rad_z = -grad_rad * (g/R)
+    T_ad_z = -g/Cp
+    κμ = g * Lz**4 * (-1)*(T_rad_z - T_ad_z) / Ra
+    κ = np.sqrt(κμ * Cp / Pr)
+    Q = κ/Lz * epsilon/(1+m_ad-epsilon)  # or κ/Lz * eps_new                                                                                                                                                   
+    flux_top = Q * Lz # perturbation only, the full flux is Q*Lz + flux_ad                                                                                                                                     
+
+    T_z = -flux_top/κ # perturbation only                       
+    
+
+    Nu = lambda Ra: Nu_a * (Ra/Ra_crit)**Nu_b 
+    
+    z_basis = de.Chebyshev('z', Nz, interval=(0, Lz), dealias=1)
+    domain = de.Domain([z_basis], np.float64, comm=MPI.COMM_SELF)
+    z = domain.grid(0)
+    
+    T1_z = domain.new_field()
+    T1 = domain.new_field()
+    
+    delta = Lz/(2 * Nu(Ra))
+    T1_z['g'] = T_z * zero_to_one(z, Lz-delta, width=delta/2)
+    T1_z.antidifferentiate('z', ('right', 0), out=T1)
+
+    T0 = domain.new_field()
+    T0_z = domain.new_field()
+    rho0 = domain.new_field()
+    
+    T0_z['g'] = T_ad_z
+    T0['g'] = (1 - T_ad_z*(Lz - z))
+    
+    
+    rho0['g'] =  T0['g']**m_ad
+    m0 = rho0.integrate('z')['g'][0]
+    
+    problem = de.NLBVP(domain, variables=['m', 'ln_rho'], ncc_cutoff=ncc_cutoff)
+    problem.parameters['Q'] = Q
+    problem.parameters['g'] = g
+    problem.parameters['R'] = R
+    problem.parameters['m0'] = m0
+    problem.parameters['T'] = T0+T1
+    problem.parameters['Tz'] = T0_z + T1_z
+
+    problem.add_equation("dz(ln_rho)  = -Tz/T - g/R/T")
+    problem.add_equation("dz(m) = exp(ln_rho)")
+
+    problem.add_bc("left(m) = 0")
+    problem.add_bc("right(m) = m0")
+
+    solver = problem.build_solver()
+
+    ln_rho = solver.state['ln_rho']
+    m = solver.state['m']
+    
+    ln_rho['g'] = np.log(rho0['g'])
+    rho0.antidifferentiate('z', ('left', 0), out=m)
+    
+    
+    pert = solver.perturbations.data
+    pert.fill(1+tolerance)
+    start_time = time.time()
+    while np.sum(np.abs(pert)) > tolerance:
+        solver.newton_iteration()
+        logger.info('Perturbation norm: {}'.format(np.sum(np.abs(pert))))
+    end_time = time.time()
+    logger.info('-'*20)
+    logger.info('Iterations: {}'.format(solver.iteration))
+    logger.info('Run time: %.2f sec' %(end_time-start_time))
+
+    ln_rho1 = domain.new_field()
+    ln_rho1['g'] = ln_rho['g'] - np.log(rho0['g'])
+    
+    return(T1, T1_z, ln_rho1, z)
+   
+def set_equations(problem):
 #    kx_0  = "(nx == 0) and (ny == 0)"
 #    kx_n0 = "(nx != 0) or  (ny != 0)"
     kx_0  = "(nx == 0)"
@@ -135,12 +235,10 @@ def set_equations(problem, stress_free):
 
     boundaries = ( (True, " left(T1_z) = 0", "True"),
                    (True, "right(T1) = 0", "True"),
-                   (not(stress_free), " left(u) = 0", "True"),
-                   (not(stress_free), "right(u) = 0", "True"),
+                   (True, " left(u) = 0", "True"),
+                   (True, "right(u) = 0", "True"),
                    (True, " left(w) = 0", "True"),
                    (True, "right(w) = 0", "True"),
-                   (stress_free, "right(u_z) = 0", "True"),
-                   (stress_free, "left(u_z)  = 0", "True"),
                  )
     for solve, bc, cond in boundaries:
         if solve: 
@@ -183,7 +281,7 @@ def set_subs(problem):
     problem.substitutions['Re'] = '(vel_rms/ν)'
     problem.substitutions['Pe'] = '(vel_rms/χ)'
     problem.substitutions['Ma'] = '(vel_rms/sqrt(T))'
-        
+
     problem.substitutions['Div_u'] = '(dx(u) + dy(v) + w_z)'
     problem.substitutions["σxx"] = "(2*dx(u) - 2/3*Div_u)"
     problem.substitutions["σyy"] = "(2*dy(v) - 2/3*Div_u)"
@@ -228,7 +326,7 @@ def set_subs(problem):
     
     return problem
 
-def initialize_output(solver, data_dir, mode='overwrite', output_dt=10, iter=np.inf):
+def initialize_output(solver, data_dir, mode='overwrite', output_dt=2, iter=np.inf):
     Lx = solver.problem.parameters['Lx']
     analysis_tasks = OrderedDict()
     slices = solver.evaluator.add_file_handler(data_dir+'slices', sim_dt=output_dt, max_writes=40, mode=mode, iter=iter)
@@ -270,12 +368,11 @@ def initialize_output(solver, data_dir, mode='overwrite', output_dt=10, iter=np.
     profiles.add_task("plane_avg(flux)", name="flux")
     analysis_tasks['profiles'] = profiles
 
-    scalars = solver.evaluator.add_file_handler(data_dir+'scalars', sim_dt=output_dt, max_writes=np.inf, mode=mode)
+    scalars = solver.evaluator.add_file_handler(data_dir+'scalars', sim_dt=output_dt*5, max_writes=np.inf, mode=mode)
     scalars.add_task("vol_avg(Re)", name="Re")
     scalars.add_task("vol_avg(Pe)", name="Pe")
     scalars.add_task("vol_avg(KE)", name="KE")
     scalars.add_task("vol_avg(Ma)", name="Ma")
-    scalars.add_task("max(Ma)",     name="Ma_max")
     scalars.add_task("vol_avg(Nu_IH)", name="Nu")
     analysis_tasks['scalars'] = scalars
 
@@ -289,19 +386,8 @@ def initialize_output(solver, data_dir, mode='overwrite', output_dt=10, iter=np.
 def run_cartesian_convection(args):
     #############################################################################################
     ### 1. Read in command-line args, set up data directory
-    
-    if args['--stress_free']:
-        logger.info('using stress-free boundary conditions')
-        sf_tag = True
-        bc_label = 'stress-free'
-    else:
-        logger.info('using no-slip boundary conditions')
-        sf_tag = False
-        bc_label = 'no-slip'
-
-
     data_dir = args['--root_dir'] + '/' + sys.argv[0].split('.py')[0]
-    data_dir += "_Ra{}_eps{}_nrho{}_Pr{}_gamma{:.2f}_{}_a{}_{}x{}".format(args['--Ra'], args['--epsilon'], args['--nrho'], args['--Pr'], float(Fraction(args['--gamma'])), bc_label, args['--aspect'], args['--nx'], args['--nz'])
+    data_dir += "_Ra{}_eps{}_nrho{}_Pr{}_a{}_{}x{}".format(args['--Ra'], args['--epsilon'], args['--nrho'], args['--Pr'], args['--aspect'], args['--nx'], args['--nz'])
     if args['--label'] is not None:
         data_dir += "_{}".format(args['--label'])
     data_dir += '/'
@@ -319,9 +405,9 @@ def run_cartesian_convection(args):
     Pr = float(args['--Pr'])
     epsilon = float(args['--epsilon'])
     nrho = float(args['--nrho'])
-    gamma = float(Fraction(args['--gamma']))
 
     # Thermo
+    gamma = 5/3
     R = 1
     Cv = R/(gamma-1)
     Cp = gamma*Cv
@@ -422,9 +508,9 @@ def run_cartesian_convection(args):
     problem.parameters['Cv'] = Cv
     problem.parameters['T_ad_z'] = T_ad_z
     problem.parameters['flux'] = flux
-
+    
     problem = set_subs(problem)
-    problem = set_equations(problem, sf_tag)
+    problem = set_equations(problem)
 
     if args['--RK222']:
         logger.info('using timestepper RK222')
@@ -441,7 +527,36 @@ def run_cartesian_convection(args):
     ###########################################################################
     ### 4. Set initial conditions or read from checkpoint.
     mode = 'overwrite'
-    if args['--restart'] is None:
+    if args['--Nu_IC']:
+        T1_IC, T1_z_IC, ln_rho1_IC, z_IC = Nu_based_IC(Ra, epsilon, Pr=Pr, Nz=nz, nrho=nrho, gamma=gamma)
+        T1 = solver.state['T1']
+        T1_z = solver.state['T1_z']
+        ln_rho1 = solver.state['ln_rho1']
+        
+        noise = global_noise(domain, int(args['--seed']))
+        for f in [T1, ln_rho1, noise]:
+            f.set_scales(1, keep_data=True)
+        
+        T1.require_grid_space()
+        slices = (0, ) + T1.layout.slices((1,1))
+        
+        
+        T1['g'] = T1_IC['g'][slices[-1]]
+        T1['g'] += 1e-3*Ma*np.sin(np.pi*(z)/Lz)*noise['g']
+        T1.differentiate('z', out=T1_z)
+        
+        ln_rho1['g'] = ln_rho1_IC['g'][slices[-1]]
+        dt = 0.01*t_heat
+        
+        if MPI.COMM_WORLD.rank==0:
+            import matplotlib.pyplot as plt
+            plt.plot(z_IC, T1_z_IC['g'], label='Nu_IC')
+            plt.xlabel('z')
+            plt.ylabel('T1_z_IC')
+            plt.savefig(data_dir+'NU_IC.png', dpi=300)
+        
+
+    elif args['--restart'] is None:
         T1 = solver.state['T1']
         T1_z = solver.state['T1_z']
         z_de = domain.grid(-1, scales=domain.dealias)
@@ -460,7 +575,7 @@ def run_cartesian_convection(args):
     ###########################################################################
     ### 5. Set simulation stop parameters, output, and CFL
     t_therm = Lz**2/κ
-    max_dt = 0.1*t_heat
+    max_dt = 0.01 * 1 #0.1 * isothermal sound speed at top
     if dt is None:
         dt = max_dt
 
@@ -537,7 +652,7 @@ def run_cartesian_convection(args):
                 logger.info('beginning join operation')
                 for key, task in analysis_tasks.items():
                     logger.info(task.base_path)
-                    post.merge_analysis(task.base_path, cleanup=True)
+                    post.merge_analysis(task.base_path)
             domain.dist.comm_cart.Barrier()
         return Re_avg
 
