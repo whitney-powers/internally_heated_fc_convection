@@ -177,6 +177,10 @@ def set_subs(problem):
     problem.substitutions['T_z']       = '(T0_z + T1_z)'
     problem.substitutions['s1']        = '(Cv*log(1+T1/T0) - ln_rho1)'
     problem.substitutions['s0']        = '(Cv*log(T0) - ln_rho0)'
+    problem.substitutions['s_full']    = 's1+s0'
+    problem.substitutions['Delta_s1']  = 'right(s1)-left(s1)'
+    problem.substitutions['Delta_s_full']  = 'right(s_full)-left(s_full)'
+
     problem.substitutions['dz_lnT']    = '(T_z/T)'
     problem.substitutions['dz_lnP']    = '(dz_lnT + grad_ln_rho0 + dz(ln_rho1))'
 
@@ -275,8 +279,10 @@ def initialize_output(solver, data_dir, mode='overwrite', output_dt=10, iter=np.
     scalars.add_task("vol_avg(Pe)", name="Pe")
     scalars.add_task("vol_avg(KE)", name="KE")
     scalars.add_task("vol_avg(Ma)", name="Ma")
-    scalars.add_task("max(Ma)",     name="Ma_max")
+    #scalars.add_task("max(Ma)",     name="Ma_max") #doesn't work unfortunately
     scalars.add_task("vol_avg(Nu_IH)", name="Nu")
+    scalars.add_task("vol_avg(Delta_s1)", name="Delta_s1")
+    scalars.add_task("vol_avg(Delta_s_full)", name="Delta_s")
     analysis_tasks['scalars'] = scalars
 
     checkpoint_min = 60
@@ -440,6 +446,12 @@ def run_cartesian_convection(args):
 
     ###########################################################################
     ### 4. Set initial conditions or read from checkpoint.
+
+    run_time_ff   = float(args['--run_time_ff'])
+    run_time_wall = float(args['--run_time_wall'])
+
+    solver.stop_wall_time = run_time_wall*3600.
+
     mode = 'overwrite'
     if args['--restart'] is None:
         T1 = solver.state['T1']
@@ -452,9 +464,13 @@ def run_cartesian_convection(args):
         T1['g'] = 1e-3*Ma*np.sin(np.pi*(z_de)/Lz)*noise['g']
         T1.differentiate('z', out=T1_z)
         dt = None
+        solver.stop_sim_time  = run_time_ff*t_heat
     else:
         write, dt = solver.load_state(args['--restart'], -1) 
         mode = 'append'
+        solver.stop_sim_time  = solver.sim_time + run_time_ff*t_heat
+    logger.info('Staring Sim Time: ' + str(solver.sim_time))
+    logger.info('Stop sim time: '+str(solver.stop_sim_time))
 #        raise NotImplementedError('need to implement checkpointing')
 
     ###########################################################################
@@ -468,11 +484,6 @@ def run_cartesian_convection(args):
     CFL = flow_tools.CFL(solver, initial_dt=dt, cadence=1, safety=cfl_safety,
                          max_change=1.5, min_change=0.25, max_dt=max_dt, threshold=0.2)
     CFL.add_velocities(('u', 'w'))
-
-    run_time_ff   = float(args['--run_time_ff'])
-    run_time_wall = float(args['--run_time_wall'])
-    solver.stop_sim_time  = run_time_ff*t_heat
-    solver.stop_wall_time = run_time_wall*3600.
  
     ###########################################################################
     ### 6. Setup output tasks; run main loop.
