@@ -17,6 +17,7 @@ Options:
     --Ra=<Ra>                  Flux Ra of convection [default: 1e4]
     --epsilon=<epsilon>        Superadiabicity [default: 0.1]
     --Pr=<Prandtl>             Prandtl number = nu/kappa [default: 1]
+    --gamma=<gamma>            Ratio of specific heats [default: 5/3]
     --nrho=<n>                 Depth of domain [default: 3]
     --aspect=<aspect>          Aspect ratio of domain [default: 4]
 
@@ -50,6 +51,7 @@ import numpy as np
 from docopt import docopt
 from mpi4py import MPI
 from scipy.special import erf
+from fractions import Fraction
 
 from dedalus import public as de
 from dedalus.extras import flow_tools
@@ -120,18 +122,27 @@ def Nu_based_IC(Ra, epsilon, Nz=64, nrho=3, gamma=5/3, R=1, Pr=1, Ra_crit=None, 
     
     # Stores parameters for fitted Nusselt power laws of form Nu = Nu_a * (Ra/Ra_crit)**Nu_b
     # For each value of epsilon this returns an array of [Ra_crit, Nu_a, Nu_b]
-    param_dict = {0.1:[102.33752,0.7357,0.2048],
-                  0.5:[102.13574,0.8000,0.1996],
-                  1:[105.22871,0.8639,0.1984],
-                  1.5:[119.39250,1.0667,0.1886],
-                  2:[189.07337,1.2471,0.1923],
-                  2.2:[311.36917,1.4464,0.1971]}
+    param_dict = {5/3: {0.1:[102.33752, 0.7357, 0.2048],
+                        0.5:[102.13574, 0.8000, 0.1996],
+                        1:[105.22871, 0.8639, 0.1984],
+                        1.5:[119.39250, 1.0667, 0.1886],
+                        2:[189.07337, 1.2471, 0.1923],
+                        2.2:[311.36917, 1.4464, 0.1971]},
+                  7/5: {0.1:[51.58319, 0.7677, 0.1943],
+                        0.5:[51.26883, 0.7920, 0.1927],
+                        1:[51.16259, 0.8281, 0.1902],
+                        1.5:[51.72527, 0.8571, 0.1896],
+                        2:[53.96633, 0.9252, 0.1868],
+                        2.5:[61.34109, 1.0270, 0.1848],
+                        3:[93.33571, 1.2251, 0.1862],
+                        3.2:[146.58625, 1.5539, 0.1797],
+                        3.3:[223.10702, 1.8926, 0.1754]}}
     if Ra_crit is None:
-        Ra_crit = param_dict[epsilon][0]
+        Ra_crit = param_dict[gamma][epsilon][0]
     if Nu_a is None:
-        Nu_a = param_dict[epsilon][1]
+        Nu_a = param_dict[gamma][epsilon][1]
     if Nu_b is None:
-        Nu_b = param_dict[epsilon][2]
+        Nu_b = param_dict[gamma][epsilon][2]
         
     logger.info("Ra_crit = {}, Nu_a = {}, Nu_b = {}".format(Ra_crit, Nu_a, Nu_b))
     Cv = R/(gamma-1)
@@ -405,9 +416,9 @@ def run_cartesian_convection(args):
     Pr = float(args['--Pr'])
     epsilon = float(args['--epsilon'])
     nrho = float(args['--nrho'])
+    gamma = float(Fraction(args['--gamma']))
 
     # Thermo
-    gamma = 5/3
     R = 1
     Cv = R/(gamma-1)
     Cp = gamma*Cv
