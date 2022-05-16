@@ -271,7 +271,7 @@ def set_subs(problem):
     problem.substitutions['Lap(A, A_z)']                   = '(dx(dx(A)) + dy(dy(A)) + dz(A_z))'
     problem.substitutions['UdotGrad(A, A_z)']              = '(u*dx(A) + v*dy(A) + w*A_z)'
     problem.substitutions['GradAdotGradB(A, B, A_z, B_z)'] = '(dx(A)*dx(B) + dy(A)*dy(B) + A_z*B_z)'
-    problem.substitutions['plane_avg(A)'] = 'integ(A, ("x","y"))/Lx/Ly' #FIXME
+    problem.substitutions['plane_avg(A)'] = 'integ(A, "x","y")/Lx/Ly' 
     problem.substitutions['vol_avg(A)']   = 'integ(A)/Lx/Ly/Lz'
     problem.substitutions['plane_std(A)'] = 'sqrt(plane_avg((A - plane_avg(A))**2))'
 
