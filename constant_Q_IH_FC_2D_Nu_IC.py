@@ -337,7 +337,7 @@ def set_subs(problem):
     
     return problem
 
-def initialize_output(solver, data_dir, mode='overwrite', output_dt=2, iter=np.inf):
+def initialize_output(solver, data_dir, mode='overwrite', output_dt=10, iter=np.inf):
     Lx = solver.problem.parameters['Lx']
     analysis_tasks = OrderedDict()
     slices = solver.evaluator.add_file_handler(data_dir+'slices', sim_dt=output_dt, max_writes=40, mode=mode, iter=iter)
@@ -379,7 +379,7 @@ def initialize_output(solver, data_dir, mode='overwrite', output_dt=2, iter=np.i
     profiles.add_task("plane_avg(flux)", name="flux")
     analysis_tasks['profiles'] = profiles
 
-    scalars = solver.evaluator.add_file_handler(data_dir+'scalars', sim_dt=output_dt*5, max_writes=np.inf, mode=mode)
+    scalars = solver.evaluator.add_file_handler(data_dir+'scalars', sim_dt=output_dt, max_writes=np.inf, mode=mode)
     scalars.add_task("vol_avg(Re)", name="Re")
     scalars.add_task("vol_avg(Pe)", name="Pe")
     scalars.add_task("vol_avg(KE)", name="KE")
