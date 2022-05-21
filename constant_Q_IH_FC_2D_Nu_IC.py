@@ -29,6 +29,7 @@ Options:
 
     --run_time_wall=<time>     Run time, in hours [default: 119.5]
     --run_time_ff=<time>       Run time, in freefall times [default: 1.6e3]
+    --max_dt                   Max time step size [default: 0.1]
 
     --Nu_IC                    Use Nu based ICs for accelerated evolution
 
@@ -288,6 +289,9 @@ def set_subs(problem):
     problem.substitutions['s0']        = '(Cv*log(T0) - ln_rho0)'
     problem.substitutions['dz_lnT']    = '(T_z/T)'
     problem.substitutions['dz_lnP']    = '(dz_lnT + grad_ln_rho0 + dz(ln_rho1))'
+    problem.substitutions['Delta_s1']  = 'right(s1)-left(s1)'
+    problem.substitutions['Delta_s_full']  = 'right(s_full)-left(s_full)'
+
 
     problem.substitutions['Re'] = '(vel_rms/ν)'
     problem.substitutions['Pe'] = '(vel_rms/χ)'
@@ -385,6 +389,9 @@ def initialize_output(solver, data_dir, mode='overwrite', output_dt=10, iter=np.
     scalars.add_task("vol_avg(KE)", name="KE")
     scalars.add_task("vol_avg(Ma)", name="Ma")
     scalars.add_task("vol_avg(Nu_IH)", name="Nu")
+    scalars.add_task("vol_avg(Delta_s1)", name="Delta_s1")
+    scalars.add_task("vol_avg(Delta_s_full)", name="Delta_s")
+
     analysis_tasks['scalars'] = scalars
 
     checkpoint_min = 60
@@ -417,6 +424,7 @@ def run_cartesian_convection(args):
     epsilon = float(args['--epsilon'])
     nrho = float(args['--nrho'])
     gamma = float(Fraction(args['--gamma']))
+    max_dt = float(args['--max_dt'])
 
     # Thermo
     R = 1
@@ -557,8 +565,9 @@ def run_cartesian_convection(args):
         T1.differentiate('z', out=T1_z)
         
         ln_rho1['g'] = ln_rho1_IC['g'][slices[-1]]
-        dt = 0.01*t_heat
-        
+        dt = 0.1*t_heat
+        #max_dt = 0.1 * 1 #0.1 * isothermal sound speed at top
+
         if MPI.COMM_WORLD.rank==0:
             import matplotlib.pyplot as plt
             plt.plot(z_IC, T1_z_IC['g'], label='Nu_IC')
@@ -578,15 +587,17 @@ def run_cartesian_convection(args):
         T1['g'] = 1e-3*Ma*np.sin(np.pi*(z_de)/Lz)*noise['g']
         T1.differentiate('z', out=T1_z)
         dt = None
+        #max_dt = 0.1 * 1 #0.1 * isothermal sound speed at top
     else:
         write, dt = solver.load_state(args['--restart'], -1) 
         mode = 'append'
+        #max_dt = 0.1 * 1 #0.1 * isothermal sound speed at top
 #        raise NotImplementedError('need to implement checkpointing')
 
     ###########################################################################
     ### 5. Set simulation stop parameters, output, and CFL
     t_therm = Lz**2/κ
-    max_dt = 0.01 * 1 #0.1 * isothermal sound speed at top
+    
     if dt is None:
         dt = max_dt
 
