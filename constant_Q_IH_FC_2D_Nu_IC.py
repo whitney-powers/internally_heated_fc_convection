@@ -29,7 +29,7 @@ Options:
 
     --run_time_wall=<time>     Run time, in hours [default: 119.5]
     --run_time_ff=<time>       Run time, in freefall times [default: 1.6e3]
-    --max_dt                   Max time step size [default: 0.1]
+    --max_dt=<max_dt>          Max time step size [default: 0.1]
 
     --Nu_IC                    Use Nu based ICs for accelerated evolution
 
@@ -287,6 +287,7 @@ def set_subs(problem):
     problem.substitutions['T_z']       = '(T0_z + T1_z)'
     problem.substitutions['s1']        = '(Cv*log(1+T1/T0) - ln_rho1)'
     problem.substitutions['s0']        = '(Cv*log(T0) - ln_rho0)'
+    problem.substitutions['s_full']    = 's0 + s1'
     problem.substitutions['dz_lnT']    = '(T_z/T)'
     problem.substitutions['dz_lnP']    = '(dz_lnT + grad_ln_rho0 + dz(ln_rho1))'
     problem.substitutions['Delta_s1']  = 'right(s1)-left(s1)'
@@ -565,7 +566,7 @@ def run_cartesian_convection(args):
         T1.differentiate('z', out=T1_z)
         
         ln_rho1['g'] = ln_rho1_IC['g'][slices[-1]]
-        dt = 0.1*t_heat
+        dt = max_dt
         #max_dt = 0.1 * 1 #0.1 * isothermal sound speed at top
 
         if MPI.COMM_WORLD.rank==0:
