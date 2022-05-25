@@ -22,7 +22,7 @@ Options:
     --aspect=<aspect>          Aspect ratio of domain [default: 4]
 
     --nz=<nz>                  Vertical resolution   [default: 64]
-    --nt=<ny>                  Horizontal (y) resolution [default:128]
+    --ny=<ny>                  Horizontal (y) resolution [default:128]
     --nx=<nx>                  Horizontal (x) resolution [default: 128]
     --RK222                    Use RK222 timestepper (default: RK443)
     --SBDF2                    Use SBDF2 timestepper (default: RK443)
@@ -348,14 +348,14 @@ def initialize_output(solver, data_dir, mode='overwrite', output_dt=2, iter=np.i
     Lx = solver.problem.parameters['Lx']
     analysis_tasks = OrderedDict()
     # FIXME : Change slices to mid-x, mid-y?, and bottom/mid/top-z
-    slices = solver.evaluator.add_file_handler(data_dir+'slices', sim_dt=output_dt, max_writes=40, mode=mode, iter=iter)
-    slices.add_task('w')
-    slices.add_task('s1')
-    slices.add_task('T1')
-    slices.add_task('Ma')
-    slices.add_task('ωy', name='vorticity')
-    slices.add_task('enstrophy')
-    analysis_tasks['slices'] = slices
+    # slices = solver.evaluator.add_file_handler(data_dir+'slices', sim_dt=output_dt, max_writes=40, mode=mode, iter=iter)
+    # slices.add_task('w')
+    # slices.add_task('s1')
+    # slices.add_task('T1')
+    # slices.add_task('Ma')
+    # slices.add_task('ωy', name='vorticity')
+    # slices.add_task('enstrophy')
+    # analysis_tasks['slices'] = slices
 
     profiles = solver.evaluator.add_file_handler(data_dir+'profiles', sim_dt=output_dt, max_writes=40, mode=mode)
     profiles.add_task("plane_avg(s1)", name='s1')
@@ -394,6 +394,16 @@ def initialize_output(solver, data_dir, mode='overwrite', output_dt=2, iter=np.i
     scalars.add_task("vol_avg(Ma)", name="Ma")
     scalars.add_task("vol_avg(Nu_IH)", name="Nu")
     analysis_tasks['scalars'] = scalars
+
+    volumes = solver.evaluator.add_file_handler(data_dir+'volumes', sim_dt=output_dt*20, max_writes=5, mode=mode, iter=iter)
+    volumes.add_task('w')
+    volumes.add_task('s1')
+    volumes.add_task('T1')
+    volumes.add_task('Ma')
+    #volumes.add_task('ωy', name='vorticity')
+    volumes.add_task('enstrophy')
+    analysis_tasks['volumes'] = volumes
+
 
     checkpoint_min = 60
     checkpoint = solver.evaluator.add_file_handler(data_dir+'checkpoint', wall_dt=checkpoint_min*60, sim_dt=np.inf, iter=np.inf, max_writes=1, mode=mode)
@@ -462,6 +472,12 @@ def run_cartesian_convection(args):
     
     ###########################################################################################################3
     ### 3. Setup Dedalus domain, problem, and substitutions/parameters
+    ncpu = MPI.COMM_WORLD.size   
+    log2 = np.log2(ncpu)
+    if log2 == int(log2):
+        mesh = [int(2**np.ceil(log2/2)),int(2**np.floor(log2/2))]
+    logger.info("running on processor mesh={}".format(mesh))
+        
     x_basis = de.Fourier('x', nx, interval=(0, Lx), dealias=3/2)
     y_basis = de.Fourier('y', ny, interval=(0, Ly), dealias=3/2)
     z_basis = de.Chebyshev('z', nz, interval=(0,Lz), dealias=3/2)
@@ -489,6 +505,7 @@ def run_cartesian_convection(args):
         f.set_scales(domain.dealias)
     for f in [ln_rho0, grad_ln_rho0, T0, T0_z, rho0]:
         f.meta['x']['constant'] = True
+        f.meta['y']['constant'] = True
 
     #radiative and adiabatic temp profiles
             
@@ -568,7 +585,7 @@ def run_cartesian_convection(args):
         T1.differentiate('z', out=T1_z)
         
         ln_rho1['g'] = ln_rho1_IC['g'][slices[-1]]
-        dt = 0.01*t_heat
+        dt = 0.1*t_heat
         
         if MPI.COMM_WORLD.rank==0:
             import matplotlib.pyplot as plt
@@ -597,14 +614,14 @@ def run_cartesian_convection(args):
     ###########################################################################
     ### 5. Set simulation stop parameters, output, and CFL
     t_therm = Lz**2/κ
-    max_dt = 0.01 * 1 #0.1 * isothermal sound speed at top
+    max_dt = 0.1 * 1 #0.1 * isothermal sound speed at top
     if dt is None:
         dt = max_dt
 
     cfl_safety = float(args['--safety'])
     CFL = flow_tools.CFL(solver, initial_dt=dt, cadence=1, safety=cfl_safety,
                          max_change=1.5, min_change=0.25, max_dt=max_dt, threshold=0.2)
-    CFL.add_velocities(('u', 'w'))
+    CFL.add_velocities(('u', 'v', 'w'))
 
     run_time_ff   = float(args['--run_time_ff'])
     run_time_wall = float(args['--run_time_wall'])
