@@ -406,7 +406,7 @@ def run_cartesian_convection(args):
     #############################################################################################
     ### 1. Read in command-line args, set up data directory
     data_dir = args['--root_dir'] + '/' + sys.argv[0].split('.py')[0]
-    data_dir += "_Ra{}_eps{}_nrho{}_Pr{}_a{}_{}x{}".format(args['--Ra'], args['--epsilon'], args['--nrho'], args['--Pr'], args['--aspect'], args['--nx'], args['--nz'])
+    data_dir += "_Ra{}_eps{}_nrho{}_Pr{}_gamma{:.2g}_a{}_{}x{}".format(args['--Ra'], args['--epsilon'], args['--nrho'], args['--Pr'],f loat(Fraction(args['--gamma'])), args['--aspect'], args['--nx'], args['--nz'])
     if args['--label'] is not None:
         data_dir += "_{}".format(args['--label'])
     data_dir += '/'
