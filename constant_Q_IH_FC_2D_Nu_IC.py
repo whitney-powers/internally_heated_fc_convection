@@ -344,6 +344,7 @@ def set_subs(problem):
 
 def initialize_output(solver, data_dir, mode='overwrite', output_dt=10, iter=np.inf):
     Lx = solver.problem.parameters['Lx']
+    Lz = solver.problem.parameters['Lz']
     analysis_tasks = OrderedDict()
     slices = solver.evaluator.add_file_handler(data_dir+'slices', sim_dt=output_dt, max_writes=40, mode=mode, iter=iter)
     slices.add_task('w')
@@ -355,9 +356,9 @@ def initialize_output(solver, data_dir, mode='overwrite', output_dt=10, iter=np.
     analysis_tasks['slices'] = slices
 
     spectra = solver.evaluator.add_file_handler(data_dir+'spectra', sim_dt=output_dt, max_writes=40, mode=mode, iter=iter)
-    spectra.add_task('interp(w, z=Lz/2)')
-    spectra.add_task('interp(u, z=Lz/2)')
-    spectra.add_task('interp(s1, z=Lz/2)')
+    spectra.add_task("interp(w, z={})".format(Lz/2), name="w")
+    spectra.add_task("interp(u, z={})".format(Lz/2), name="u")
+    spectra.add_task("interp(s1, z={})".format(Lz/2), name="s1")
     analysis_tasks['spectra'] = spectra
 
     profiles = solver.evaluator.add_file_handler(data_dir+'profiles', sim_dt=output_dt, max_writes=40, mode=mode)
@@ -553,6 +554,12 @@ def run_cartesian_convection(args):
     ###########################################################################
     ### 4. Set initial conditions or read from checkpoint.
     mode = 'overwrite'
+    run_time_ff   = float(args['--run_time_ff'])
+    run_time_wall = float(args['--run_time_wall'])
+    
+    solver.stop_wall_time = run_time_wall*3600.
+     
+
     if args['--Nu_IC']:
         T1_IC, T1_z_IC, ln_rho1_IC, z_IC = Nu_based_IC(Ra, epsilon, Pr=Pr, Nz=nz, nrho=nrho, gamma=gamma)
         T1 = solver.state['T1']
@@ -574,6 +581,7 @@ def run_cartesian_convection(args):
         ln_rho1['g'] = ln_rho1_IC['g'][slices[-1]]
         dt = max_dt
         #max_dt = 0.1 * 1 #0.1 * isothermal sound speed at top
+        solver.stop_sim_time  = run_time_ff*t_heat
         
 
         if MPI.COMM_WORLD.rank==0:
@@ -596,11 +604,15 @@ def run_cartesian_convection(args):
         T1.differentiate('z', out=T1_z)
         dt = None
         #max_dt = 0.1 * 1 #0.1 * isothermal sound speed at top
+        solver.stop_sim_time  = run_time_ff*t_heat
     else:
         write, dt = solver.load_state(args['--restart'], -1) 
         mode = 'append'
-        #max_dt = 0.1 * 1 #0.1 * isothermal sound speed at top
-#        raise NotImplementedError('need to implement checkpointing')
+        solver.stop_sim_time  = solver.sim_time + run_time_ff*t_heat
+
+    logger.info('Staring Sim Time: ' + str(solver.sim_time))
+    logger.info('Stop sim time: '+str(solver.stop_sim_time))
+
 
     ###########################################################################
     ### 5. Set simulation stop parameters, output, and CFL
@@ -614,11 +626,8 @@ def run_cartesian_convection(args):
                          max_change=1.5, min_change=0.25, max_dt=max_dt, threshold=0.2)
     CFL.add_velocities(('u', 'w'))
 
-    run_time_ff   = float(args['--run_time_ff'])
-    run_time_wall = float(args['--run_time_wall'])
-    solver.stop_sim_time  = run_time_ff*t_heat
-    solver.stop_wall_time = run_time_wall*3600.
- 
+
+    
     ###########################################################################
     ### 6. Setup output tasks; run main loop.
     analysis_tasks = initialize_output(solver, data_dir, mode=mode, output_dt=0.1*t_heat)
