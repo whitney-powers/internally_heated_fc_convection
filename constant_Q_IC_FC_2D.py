@@ -1,6 +1,6 @@
 """
 Dedalus script for convection in a fully-compressible polytrope.
-The convection is driven by an internal heating and internal cooling layer.
+The convection is driven by internal cooling.
 
 There are 5 control parameters:
     Ra      - The flux rayleigh number of the convection.
@@ -16,6 +16,7 @@ Usage:
 Options:
     --Ra=<Ra>                  Flux Ra of convection [default: 1e4]
     --epsilon=<epsilon>        Superadiabicity [default: 0.1]
+    --c                        cooling parameter
     --Pr=<Prandtl>             Prandtl number = nu/kappa [default: 1]
     --nrho=<n>                 Depth of domain [default: 3]
     --aspect=<aspect>          Aspect ratio of domain [default: 4]
@@ -133,8 +134,8 @@ def set_equations(problem, stress_free):
             logger.info('solving eqn {} under condition {}'.format(eqn, cond))
             problem.add_equation(eqn, condition=cond)
 
-    boundaries = ( (True, " left(T1_z) = 0", "True"),
-                   (True, "right(T1) = 0", "True"),
+    boundaries = ( (True, " right(T1_z) = 0", "True"),
+                   (True, "left(T1) = 0", "True"),
                    (not(stress_free), " left(u) = 0", "True"),
                    (not(stress_free), "right(u) = 0", "True"),
                    (True, " left(w) = 0", "True"),
@@ -225,6 +226,7 @@ def set_subs(problem):
     problem.substitutions['F_conv'] = '( F_enth + F_KE + F_PE + F_visc )'
     problem.substitutions['F_tot']  = '( F_cond + F_conv )'
     problem.substitutions['F_dif_top']  = 'right( (flux - F_tot)/flux)'
+    problem.substitutions['F_dif_bot']  = 'left( (flux - F_tot)/flux)'
 
     # Anders & Brown 2017 Nusselt Number
     problem.substitutions['F_A']     = '(-κ*(-g/Cp))'
@@ -306,16 +308,7 @@ def run_cartesian_convection(args):
         bc_label = 'no-slip'
 
 
-    data_dir = args['--root_dir'] + '/' + sys.argv[0].split('.py')[0]
-    data_dir += "_Ra{}_eps{}_nrho{}_Pr{}_gamma{:.2f}_{}_a{}_{}x{}".format(args['--Ra'], args['--epsilon'], args['--nrho'], args['--Pr'], float(Fraction(args['--gamma'])), bc_label, args['--aspect'], args['--nx'], args['--nz'])
-    if args['--label'] is not None:
-        data_dir += "_{}".format(args['--label'])
-    data_dir += '/'
-    if MPI.COMM_WORLD.rank == 0:
-        if not os.path.exists('{:s}'.format(data_dir)):
-            os.makedirs('{:s}'.format(data_dir))
-    logger.info("saving run in: {}".format(data_dir))
-
+    
     ########################################################################################
     ### 2. Organize simulation parameters
     aspect   = float(args['--aspect'])
@@ -323,7 +316,7 @@ def run_cartesian_convection(args):
     nz = int(args['--nz'])
     Ra = float(args['--Ra'])
     Pr = float(args['--Pr'])
-    epsilon = float(args['--epsilon'])
+    
     nrho = float(args['--nrho'])
     gamma = float(Fraction(args['--gamma']))
 
@@ -334,6 +327,26 @@ def run_cartesian_convection(args):
     m_ad = 1/(gamma-1)
     g = Cp 
     T_ad_z = -g/Cp
+
+    if args['--c']:
+        C_mag = float(args['--c'])
+        epsilon = C_mag*(1+m_ad)/(1-C_mag)
+        logger.info('Using cooling strength to set parameters')
+    else:
+        epsilon = float(args['--epsilon'])
+        C_mag = epsilon/(1+m_ad - epsilon)
+        logger.info('using epsilon to set parameters')
+        
+    data_dir = args['--root_dir'] + '/' + sys.argv[0].split('.py')[0]
+    data_dir += "_Ra{}_C{:.2g}_nrho{}_Pr{}_gamma{:.2f}_{}_a{}_{}x{}".format(args['--Ra'], C_mag, args['--nrho'], args['--Pr'], float(Fraction(args['--gamma'])), bc_label, args['--aspect'], args['--nx'], args['--nz'])
+    if args['--label'] is not None:
+        data_dir += "_{}".format(args['--label'])
+    data_dir += '/'
+    if MPI.COMM_WORLD.rank == 0:
+        if not os.path.exists('{:s}'.format(data_dir)):
+            os.makedirs('{:s}'.format(data_dir))
+    logger.info("saving run in: {}".format(data_dir))
+
 
     #Length scales
     Lz    = np.exp(nrho/np.abs(m_ad))-1
@@ -351,8 +364,8 @@ def run_cartesian_convection(args):
     κμ = g * Lz**4 * np.abs(T_rad_z - T_ad_z) / Ra #Pr = mu * cp / kappa, so  mu kappa = Pr * kappa**2 / cp
     κ = np.sqrt(κμ * Cp / Pr)
     μ = Pr * κ / Cp
-    Q_mag = κ/Lz * epsilon/(1+m_ad-epsilon)
-    Ma = Q_mag**(1/3)
+    Q_mag = -κ/Lz * C_mag
+    Ma = (-Q_mag)**(1/3)
     t_heat = 1/Ma
 
     #Adjust to account for expected velocities. and larger m = 0 diffusivities.
@@ -403,7 +416,7 @@ def run_cartesian_convection(args):
     s0_z['g'] = 0
 
     Q['g'] = Q_mag
-    Q.antidifferentiate('z', ('left', -κ*T_ad_z), out=flux)
+    Q.antidifferentiate('z', ('right', -κ*T_ad_z), out=flux)
 
     #Plug in default parameters
     ones = domain.new_field()
@@ -494,7 +507,7 @@ def run_cartesian_convection(args):
     flow.add_property("Pe", name='Pe')
     flow.add_property("Ma", name='Ma')
     flow.add_property("Nu_IH", name='Nu')
-    flow.add_property("F_dif_top", name='F_dif_top')
+    flow.add_property("F_dif_bot", name='F_dif_bot')
     Hermitian_cadence = 100
 
     def main_loop(dt):
@@ -519,7 +532,7 @@ def run_cartesian_convection(args):
                     log_string += 'Pe: {:8.3e}/{:8.3e}, '.format(flow.volume_average('Pe'), flow.max('Pe'))
                     log_string += 'Ma: {:8.3e}/{:8.3e}, '.format(flow.volume_average('Ma'), flow.max('Ma'))
                     log_string += 'Nu: {:8.3e}, '.format(flow.volume_average('Nu'))
-                    log_string += 'F_dif_top: {:8.3e}'.format(flow.grid_average('F_dif_top'))
+                    log_string += 'F_dif_bot: {:8.3e}'.format(flow.grid_average('F_dif_bot'))
                     logger.info(log_string)
 
                 dt = CFL.compute_dt()

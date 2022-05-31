@@ -1,6 +1,7 @@
 """
 Dedalus script for convection in a fully-compressible polytrope.
-The convection is driven by an internal heating and internal cooling layer.
+The convection is driven by a constant internal heating.
+Benchmarking script with output tasks disabled and short default runtime.
 
 There are 5 control parameters:
     Ra      - The flux rayleigh number of the convection.
@@ -10,8 +11,8 @@ There are 5 control parameters:
     aspect  - The aspect ratio (Lx = aspect * Lz)
 
 Usage:
-    constant_Q_IH_FC_2D.py [options] 
-    constant_Q_IH_FC_2D.py <config> [options] 
+    constant_Q_IH_FC_2D_benchmark.py [options] 
+    constant_Q_IH_FC_2D_benchmark.py <config> [options] 
 
 Options:
     --Ra=<Ra>                  Flux Ra of convection [default: 1e4]
@@ -30,7 +31,7 @@ Options:
     --safety=<s>               CFL safety factor [default: 0.75]
 
     --run_time_wall=<time>     Run time, in hours [default: 119.5]
-    --run_time_ff=<time>       Run time, in freefall times [default: 1.6e3]
+    --run_time_ff=<time>       Run time, in freefall times [default: 100]
 
     --restart=<restart_file>   Restart from checkpoint
     --seed=<seed>              RNG seed for initial conditions [default: 42]
@@ -487,7 +488,7 @@ def run_cartesian_convection(args):
  
     ###########################################################################
     ### 6. Setup output tasks; run main loop.
-    analysis_tasks = initialize_output(solver, data_dir, mode=mode, output_dt=0.1*t_heat)
+    #analysis_tasks = initialize_output(solver, data_dir, mode=mode, output_dt=0.1*t_heat)
 
     flow = flow_tools.GlobalFlowProperty(solver, cadence=1)
     flow.add_property("Re", name='Re')
@@ -536,20 +537,21 @@ def run_cartesian_convection(args):
             logger.info('Run time: {:f} sec'.format(main_loop_time))
             logger.info('Run time: {:f} cpu-hr'.format(main_loop_time/60/60*domain.dist.comm_cart.size))
             logger.info('iter/sec: {:f} (main loop only)'.format(n_iter_loop/main_loop_time))
-            try:
-                final_checkpoint = solver.evaluator.add_file_handler(data_dir+'final_checkpoint', wall_dt=np.inf, sim_dt=np.inf, iter=1, max_writes=1)
-                final_checkpoint.add_system(solver.state, layout = 'c')
-                solver.step(1e-5*dt) #clean this up in the future...works for now.
-                post.merge_process_files(data_dir+'/final_checkpoint/', cleanup=True)
-            except:
-                raise
-                print('cannot save final checkpoint')
-            finally:
-                logger.info('beginning join operation')
-                for key, task in analysis_tasks.items():
-                    logger.info(task.base_path)
-                    post.merge_analysis(task.base_path, cleanup=True)
-            domain.dist.comm_cart.Barrier()
+            # try:
+            #     final_checkpoint = solver.evaluator.add_file_handler(data_dir+'final_checkpoint', wall_dt=np.inf, sim_dt=np.inf, iter=1, max_writes=1)
+            #     final_checkpoint.add_system(solver.state, layout = 'c')
+            #     solver.step(1e-5*dt) #clean this up in the future...works for now.
+            #     post.merge_process_files(data_dir+'/final_checkpoint/', cleanup=True)
+            # except:
+            #     raise
+            #     print('cannot save final checkpoint')
+            # finally:
+            #     logger.info('beginning join operation')
+            #     for key, task in analysis_tasks.items():
+            #         logger.info(task.base_path)
+            #         post.merge_analysis(task.base_path, cleanup=True)
+            # domain.dist.comm_cart.Barrier()
+            solver.log_stats() # run performance stats
         return Re_avg
 
     Re_avg = main_loop(dt)
