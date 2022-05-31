@@ -354,6 +354,12 @@ def initialize_output(solver, data_dir, mode='overwrite', output_dt=10, iter=np.
     slices.add_task('enstrophy')
     analysis_tasks['slices'] = slices
 
+    spectra = solver.evaluator.add_file_handler(data_dir+'spectra', sim_dt=output_dt, max_writes=40, mode=mode, iter=iter)
+    spectra.add_task('interp(w, z=Lz/2)')
+    spectra.add_task('interp(u, z=Lz/2)')
+    spectra.add_task('interp(s1, z=Lz/2)')
+    analysis_tasks['spectra'] = spectra
+
     profiles = solver.evaluator.add_file_handler(data_dir+'profiles', sim_dt=output_dt, max_writes=40, mode=mode)
     profiles.add_task("plane_avg(s1)", name='s1')
     profiles.add_task("plane_avg(sqrt((s1 - plane_avg(s1))**2))", name='s1_fluc')
@@ -406,7 +412,7 @@ def run_cartesian_convection(args):
     #############################################################################################
     ### 1. Read in command-line args, set up data directory
     data_dir = args['--root_dir'] + '/' + sys.argv[0].split('.py')[0]
-    data_dir += "_Ra{}_eps{}_nrho{}_Pr{}_gamma{:.2g}_a{}_{}x{}".format(args['--Ra'], args['--epsilon'], args['--nrho'], args['--Pr'],f loat(Fraction(args['--gamma'])), args['--aspect'], args['--nx'], args['--nz'])
+    data_dir += "_Ra{}_eps{}_nrho{}_Pr{}_gamma{:.2g}_a{}_{}x{}".format(args['--Ra'], args['--epsilon'], args['--nrho'], args['--Pr'], float(Fraction(args['--gamma'])), args['--aspect'], args['--nx'], args['--nz'])
     if args['--label'] is not None:
         data_dir += "_{}".format(args['--label'])
     data_dir += '/'
@@ -568,6 +574,7 @@ def run_cartesian_convection(args):
         ln_rho1['g'] = ln_rho1_IC['g'][slices[-1]]
         dt = max_dt
         #max_dt = 0.1 * 1 #0.1 * isothermal sound speed at top
+        
 
         if MPI.COMM_WORLD.rank==0:
             import matplotlib.pyplot as plt
