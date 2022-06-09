@@ -351,17 +351,28 @@ def initialize_output(solver, data_dir, mode='overwrite', output_dt=10, iter=np.
     analysis_tasks = OrderedDict()
     # FIXME : Change slices to mid-x, mid-y?, and bottom/mid/top-z
     slices = solver.evaluator.add_file_handler(data_dir+'slices', sim_dt=output_dt, max_writes=20, mode=mode, iter=iter)
+    
     slices.add_task("interp(s1, z={})".format(Lz/2), name="s1_midz")
     slices.add_task("interp(s1, y={})".format(Ly/2), name="s1_midy")
     slices.add_task("interp(s1, x={})".format(Lx/2), name="s1_midx")
 
+    slices.add_task("interp(s1, z={})".format(Lz*0.05), name="s1_z0.05")
+    slices.add_task("interp(s1, z={})".format(Lz*0.95), name="s1_z0.95")
+    slices.add_task("interp(s1, y={})".format(0), name="s1_sidey")
+    slices.add_task("interp(s1, x={})".format(0), name="s1_sidex")
+
     slices.add_task("interp(enstrophy, z={})".format(Lz/2), name="enstrophy_midz")
     slices.add_task("interp(enstrophy, y={})".format(Ly/2), name="enstrophy_midy")
     slices.add_task("interp(enstrophy, x={})".format(Lx/2), name="enstrophy_midx")
+
+    slices.add_task("interp(enstrophy, z={})".format(Lz*0.05), name="enstrophy_z0.05")
+    slices.add_task("interp(enstrophy, z={})".format(Lz*0.95), name="enstrophy_z0.95")
+    slices.add_task("interp(enstrophy, y={})".format(0), name="enstrophy_sidey")
+    slices.add_task("interp(enstrophy, x={})".format(0), name="enstrophy_sidex")
     
-    slices.add_task("interp(u, x={})".format(Lz/2), name="u_midz")
-    slices.add_task("interp(v, x={})".format(Lz/2), name="v_midz")
-    slices.add_task("interp(w, x={})".format(Lz/2), name="w_midz")
+    slices.add_task("interp(u, z={})".format(Lz/2), name="u_midz")
+    slices.add_task("interp(v, z={})".format(Lz/2), name="v_midz")
+    slices.add_task("interp(w, z={})".format(Lz/2), name="w_midz")
     # slices.add_task('w')
     # slices.add_task('s1')
     # slices.add_task('T1')
