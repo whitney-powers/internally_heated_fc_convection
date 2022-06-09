@@ -495,7 +495,7 @@ def run_cartesian_convection(args):
     y_basis = de.Fourier('y', ny, interval=(0, Ly), dealias=3/2)
     z_basis = de.Chebyshev('z', nz, interval=(0,Lz), dealias=3/2)
     bases = [x_basis, y_basis, z_basis]
-    domain = de.Domain(bases, grid_dtype=np.float64, mesh=None)
+    domain = de.Domain(bases, grid_dtype=np.float64, mesh=mesh)
     reducer = flow_tools.GlobalArrayReducer(domain.distributor.comm_cart)
     z = domain.grid(-1)
     z_de = domain.grid(-1, scales=domain.dealias)
