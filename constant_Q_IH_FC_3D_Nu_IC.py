@@ -57,7 +57,7 @@ from fractions import Fraction
 from dedalus import public as de
 from dedalus.extras import flow_tools
 from dedalus.tools  import post
-
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 args = docopt(__doc__)
 
@@ -237,10 +237,10 @@ def set_equations(problem):
                   (True, "True", "v_z - dz(v)   = 0"),
                   (True, "True", "w_z - dz(w)   = 0"),
                   (True, "True", "T0*(dt(ln_rho1) + Div_u + w*grad_ln_rho0) = -T0*UdotGrad(ln_rho1, dz(ln_rho1))"), #Continuity
-                  (True, "True", "dt(u) - visc_L_x  + R*( dx(T1) + T0*dx(ln_rho1)                  ) = -UdotGrad(u, u_z) - R*T1*dx(ln_rho1) + visc_R_x "), #momentum-x
-                  (True, "True", "dt(v) - visc_L_y  + R*( dy(T1) + T0*dy(ln_rho1)                  ) = -UdotGrad(v, v_z) - R*T1*dy(ln_rho1) + visc_R_y "), #momentum-y
-                  (True, "True", "T0*(dt(w) - visc_L_z  + R*( T1_z  + T1*grad_ln_rho0 + T0*dz(ln_rho1) ) ) = T0*(-UdotGrad(w, w_z) - R*T1*dz(ln_rho1) + visc_R_z )"), #momentum-z
-                  (True, "True", "T0*(dt(T1) + w*T0_z + (γ-1)*T0*Div_u - diff_L ) = T0*(-UdotGrad(T1, T1_z) - (γ-1)*T1*Div_u + visc_heat + diff_R)"), #energy eqn
+                  (True, "True", "rho0*(dt(u) - visc_L_x  + R*( dx(T1) + T0*dx(ln_rho1)                  ) ) = rho0*(-UdotGrad(u, u_z) - R*T1*dx(ln_rho1) + visc_R_x )"), #momentum-x
+                  (True, "True", "rho0*(dt(v) - visc_L_y  + R*( dy(T1) + T0*dy(ln_rho1)                  ) ) = rho0*(-UdotGrad(v, v_z) - R*T1*dy(ln_rho1) + visc_R_y )"), #momentum-y
+                  (True, "True", "rho0*(dt(w) - visc_L_z  + R*( T1_z  + T1*grad_ln_rho0 + T0*dz(ln_rho1) ) ) = rho0*(-UdotGrad(w, w_z) - R*T1*dz(ln_rho1) + visc_R_z )"), #momentum-z
+                  (True, "True", "rho0*(dt(T1) + w*T0_z + (γ-1)*T0*Div_u - diff_L ) = rho0*(-UdotGrad(T1, T1_z) - (γ-1)*T1*Div_u + visc_heat + diff_R)"), #energy eqn
                 )
     for solve, cond, eqn in equations:
         if solve:
@@ -344,20 +344,33 @@ def set_subs(problem):
     
     return problem
 
-def initialize_output(solver, data_dir, mode='overwrite', output_dt=2, iter=np.inf):
+def initialize_output(solver, data_dir, mode='overwrite', output_dt=10, iter=np.inf):
     Lx = solver.problem.parameters['Lx']
+    Ly = solver.problem.parameters['Ly']
+    Lz = solver.problem.parameters['Lz']
     analysis_tasks = OrderedDict()
     # FIXME : Change slices to mid-x, mid-y?, and bottom/mid/top-z
-    # slices = solver.evaluator.add_file_handler(data_dir+'slices', sim_dt=output_dt, max_writes=40, mode=mode, iter=iter)
+    slices = solver.evaluator.add_file_handler(data_dir+'slices', sim_dt=output_dt, max_writes=20, mode=mode, iter=iter)
+    slices.add_task("interp(s1, z={})".format(Lz/2), name="s1_midz")
+    slices.add_task("interp(s1, y={})".format(Ly/2), name="s1_midy")
+    slices.add_task("interp(s1, x={})".format(Lx/2), name="s1_midx")
+
+    slices.add_task("interp(enstrophy, z={})".format(Lz/2), name="enstrophy_midz")
+    slices.add_task("interp(enstrophy, y={})".format(Ly/2), name="enstrophy_midy")
+    slices.add_task("interp(enstrophy, x={})".format(Lx/2), name="enstrophy_midx")
+    
+    slices.add_task("interp(u, x={})".format(Lz/2), name="u_midz")
+    slices.add_task("interp(v, x={})".format(Lz/2), name="v_midz")
+    slices.add_task("interp(w, x={})".format(Lz/2), name="w_midz")
     # slices.add_task('w')
     # slices.add_task('s1')
     # slices.add_task('T1')
     # slices.add_task('Ma')
     # slices.add_task('ωy', name='vorticity')
     # slices.add_task('enstrophy')
-    # analysis_tasks['slices'] = slices
+    analysis_tasks['slices'] = slices
 
-    profiles = solver.evaluator.add_file_handler(data_dir+'profiles', sim_dt=output_dt, max_writes=40, mode=mode)
+    profiles = solver.evaluator.add_file_handler(data_dir+'profiles', sim_dt=output_dt, max_writes=20, mode=mode)
     profiles.add_task("plane_avg(s1)", name='s1')
     profiles.add_task("plane_avg(sqrt((s1 - plane_avg(s1))**2))", name='s1_fluc')
     profiles.add_task("plane_avg(dz(s1))", name='s1_z')
@@ -395,14 +408,14 @@ def initialize_output(solver, data_dir, mode='overwrite', output_dt=2, iter=np.i
     scalars.add_task("vol_avg(Nu_IH)", name="Nu")
     analysis_tasks['scalars'] = scalars
 
-    volumes = solver.evaluator.add_file_handler(data_dir+'volumes', sim_dt=output_dt*20, max_writes=5, mode=mode, iter=iter)
-    volumes.add_task('w')
-    volumes.add_task('s1')
-    volumes.add_task('T1')
-    volumes.add_task('Ma')
-    #volumes.add_task('ωy', name='vorticity')
-    volumes.add_task('enstrophy')
-    analysis_tasks['volumes'] = volumes
+    # volumes = solver.evaluator.add_file_handler(data_dir+'volumes', sim_dt=output_dt*20, max_writes=1, mode=mode, iter=iter)
+    # volumes.add_task('w')
+    # volumes.add_task('s1')
+    # volumes.add_task('T1')
+    # volumes.add_task('Ma')
+    # #volumes.add_task('ωy', name='vorticity')
+    # volumes.add_task('enstrophy')
+    # analysis_tasks['volumes'] = volumes
 
 
     checkpoint_min = 60
@@ -577,7 +590,7 @@ def run_cartesian_convection(args):
             f.set_scales(1, keep_data=True)
         
         T1.require_grid_space()
-        slices = (0, ) + T1.layout.slices((1,1))
+        slices = (0, ) + T1.layout.slices((1,1,1))
         
         
         T1['g'] = T1_IC['g'][slices[-1]]
