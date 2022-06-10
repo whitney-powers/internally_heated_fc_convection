@@ -294,6 +294,7 @@ def set_subs(problem):
     problem.substitutions['s0']        = '(Cv*log(T0) - ln_rho0)'
     problem.substitutions['dz_lnT']    = '(T_z/T)'
     problem.substitutions['dz_lnP']    = '(dz_lnT + grad_ln_rho0 + dz(ln_rho1))'
+    problem.substitutions['Delta_s1']  = 'right(s1)-left(s1)'
 
     problem.substitutions['Re'] = '(vel_rms/ν)'
     problem.substitutions['Pe'] = '(vel_rms/χ)'
@@ -418,6 +419,7 @@ def initialize_output(solver, data_dir, mode='overwrite', output_dt=10, iter=np.
     scalars.add_task("vol_avg(KE)", name="KE")
     scalars.add_task("vol_avg(Ma)", name="Ma")
     scalars.add_task("vol_avg(Nu_IH)", name="Nu")
+    scalars.add_task("vol_avg(Delta_s1)", name="Delta_s1")
     analysis_tasks['scalars'] = scalars
 
     # volumes = solver.evaluator.add_file_handler(data_dir+'volumes', sim_dt=output_dt*20, max_writes=1, mode=mode, iter=iter)
