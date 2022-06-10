@@ -27,6 +27,7 @@ Options:
     --RK222                    Use RK222 timestepper (default: RK443)
     --SBDF2                    Use SBDF2 timestepper (default: RK443)
     --safety=<s>               CFL safety factor [default: 0.75]
+    --max_dt=<max_dt>          maximum allowed time step size [default: 0.1]
 
     --run_time_wall=<time>     Run time, in hours [default: 119.5]
     --run_time_ff=<time>       Run time, in freefall times [default: 1.6e3]
@@ -440,7 +441,7 @@ def run_cartesian_convection(args):
     #############################################################################################
     ### 1. Read in command-line args, set up data directory
     data_dir = args['--root_dir'] + '/' + sys.argv[0].split('.py')[0]
-    data_dir += "_Ra{}_eps{}_nrho{}_Pr{}_a{}_{}x{}".format(args['--Ra'], args['--epsilon'], args['--nrho'], args['--Pr'], args['--aspect'], args['--nx'], args['--nz'])
+    data_dir += "_Ra{}_eps{}_nrho{}_Pr{}_a{}_gamma{:.2g}_{}x{}x{}".format(args['--Ra'], args['--epsilon'], args['--nrho'], args['--Pr'], float(Fraction(args['--gamma'])), args['--aspect'], args['--nx'],args['--ny'], args['--nz'])
     if args['--label'] is not None:
         data_dir += "_{}".format(args['--label'])
     data_dir += '/'
@@ -460,6 +461,7 @@ def run_cartesian_convection(args):
     epsilon = float(args['--epsilon'])
     nrho = float(args['--nrho'])
     gamma = float(Fraction(args['--gamma']))
+    max_dt = float(args['--max_dt'])
 
     # Thermo
     R = 1
@@ -609,7 +611,7 @@ def run_cartesian_convection(args):
         T1.differentiate('z', out=T1_z)
         
         ln_rho1['g'] = ln_rho1_IC['g'][slices[-1]]
-        dt = 0.1*t_heat
+        #dt = 0.1*t_heat
         
         if MPI.COMM_WORLD.rank==0:
             import matplotlib.pyplot as plt
@@ -638,7 +640,7 @@ def run_cartesian_convection(args):
     ###########################################################################
     ### 5. Set simulation stop parameters, output, and CFL
     t_therm = Lz**2/κ
-    max_dt = 0.1 * 1 #0.1 * isothermal sound speed at top
+    max_dt *= 1 #max_dt * isothermal sound speed at top
     if dt is None:
         dt = max_dt
 
