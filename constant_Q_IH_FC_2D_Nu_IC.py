@@ -691,7 +691,7 @@ def run_cartesian_convection(args):
                 logger.info('beginning join operation')
                 for key, task in analysis_tasks.items():
                     logger.info(task.base_path)
-                    post.merge_analysis(task.base_path)
+                    post.merge_analysis(task.base_path, cleanup=True)
             domain.dist.comm_cart.Barrier()
         return Re_avg
 

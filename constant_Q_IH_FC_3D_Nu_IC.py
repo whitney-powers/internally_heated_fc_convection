@@ -363,6 +363,16 @@ def initialize_output(solver, data_dir, mode='overwrite', output_dt=10, iter=np.
     slices.add_task("interp(s1, y={})".format(0), name="s1_sidey")
     slices.add_task("interp(s1, x={})".format(0), name="s1_sidex")
 
+        
+    slices.add_task("interp(s1-plane_avg(s1), z={})".format(Lz/2), name="s1_fluc_midz")
+    slices.add_task("interp(s1-plane_avg(s1), y={})".format(Ly/2), name="s1_fluc_midy")
+    slices.add_task("interp(s1-plane_avg(s1), x={})".format(Lx/2), name="s1_fluc_midx")
+
+    slices.add_task("interp(s1-plane_avg(s1), z={})".format(Lz*0.05), name="s1_fluc_z0.05")
+    slices.add_task("interp(s1-plane_avg(s1), z={})".format(Lz*0.95), name="s1_fluc_z0.95")
+    slices.add_task("interp(s1-plane_avg(s1), y={})".format(0), name="s1_fluc_sidey")
+    slices.add_task("interp(s1-plane_avg(s1), x={})".format(0), name="s1_fluc_sidex")
+
     slices.add_task("interp(enstrophy, z={})".format(Lz/2), name="enstrophy_midz")
     slices.add_task("interp(enstrophy, y={})".format(Ly/2), name="enstrophy_midy")
     slices.add_task("interp(enstrophy, x={})".format(Lx/2), name="enstrophy_midx")
@@ -719,7 +729,7 @@ def run_cartesian_convection(args):
                 logger.info('beginning join operation')
                 for key, task in analysis_tasks.items():
                     logger.info(task.base_path)
-                    post.merge_analysis(task.base_path)
+                    post.merge_analysis(task.base_path, cleanup=True)
             domain.dist.comm_cart.Barrier()
         return Re_avg
 
