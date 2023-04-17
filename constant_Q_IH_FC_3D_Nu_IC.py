@@ -144,8 +144,7 @@ def Nu_based_IC(Ra, epsilon, Nz=64, nrho=3, gamma=5/3, R=1, Pr=1, Ra_crit=None, 
     if Nu_a is None:
         Nu_a = param_dict[gamma][epsilon][1]
     if Nu_b is None:
-        Nu_b = param_dict[gamma][epsilon][2]
-        
+        Nu_b = param_dict[gamma][epsilon][2] 
     logger.info("Ra_crit = {}, Nu_a = {}, Nu_b = {}".format(Ra_crit, Nu_a, Nu_b))
     Cv = R/(gamma-1)
     Cp = gamma*Cv
@@ -166,6 +165,7 @@ def Nu_based_IC(Ra, epsilon, Nz=64, nrho=3, gamma=5/3, R=1, Pr=1, Ra_crit=None, 
     
 
     Nu = lambda Ra: Nu_a * (Ra/Ra_crit)**Nu_b 
+    Nu_factor = 1.2 # EXTREMELY AD HOC 2D-> 3D Nu power law adjustment
     
     z_basis = de.Chebyshev('z', Nz, interval=(0, Lz), dealias=1)
     domain = de.Domain([z_basis], np.float64, comm=MPI.COMM_SELF)
@@ -174,7 +174,7 @@ def Nu_based_IC(Ra, epsilon, Nz=64, nrho=3, gamma=5/3, R=1, Pr=1, Ra_crit=None, 
     T1_z = domain.new_field()
     T1 = domain.new_field()
     
-    delta = Lz/(2 * Nu(Ra))
+    delta = Lz/(2 * Nu_factor * Nu(Ra))
     T1_z['g'] = T_z * zero_to_one(z, Lz-delta, width=delta/2)
     T1_z.antidifferentiate('z', ('right', 0), out=T1)
 
@@ -432,14 +432,14 @@ def initialize_output(solver, data_dir, mode='overwrite', output_dt=10, iter=np.
     scalars.add_task("vol_avg(Delta_s1)", name="Delta_s1")
     analysis_tasks['scalars'] = scalars
 
-    # volumes = solver.evaluator.add_file_handler(data_dir+'volumes', sim_dt=output_dt*20, max_writes=1, mode=mode, iter=iter)
-    # volumes.add_task('w')
-    # volumes.add_task('s1')
-    # volumes.add_task('T1')
-    # volumes.add_task('Ma')
+    volumes = solver.evaluator.add_file_handler(data_dir+'volumes', sim_dt=output_dt*20, max_writes=1, mode=mode, iter=iter)
+    volumes.add_task('w')
+    volumes.add_task('s1')
+    volumes.add_task('T1')
+    volumes.add_task('Ma')
     # #volumes.add_task('ωy', name='vorticity')
-    # volumes.add_task('enstrophy')
-    # analysis_tasks['volumes'] = volumes
+    volumes.add_task('enstrophy')
+    analysis_tasks['volumes'] = volumes
 
 
     checkpoint_min = 60

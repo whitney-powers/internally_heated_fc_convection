@@ -39,11 +39,14 @@ if roll_writes is not None:
 figs = []
 
 # Nu vs time
-fig1 = ScalarFigure(num_rows=3, num_cols=1, col_inch=6, fig_name='fundamentals')
+fig1 = ScalarFigure(num_rows=4, num_cols=1, col_inch=6, fig_name='fundamentals')
+#fig1 = ScalarFigure(num_rows=3, num_cols=1, col_inch=6, fig_name='fundamentals')
 fig1.add_field(0, 'Re')
 fig1.add_field(0, 'Pe')
-fig1.add_field(1, 'Nu', log=True)
+fig1.add_field(1, 'Nu')
 fig1.add_field(2, 'Ma')
+fig1.add_field(3, "Delta_s1")
+#fig1.add_field(3, "Delta_s")
 figs.append(fig1)
 
 
