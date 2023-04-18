@@ -1,10 +1,13 @@
 """
 Dedalus script for convection in a fully-compressible polytrope.
-The convection is driven by an internal heating and internal cooling layer.
+The convection is driven by a constant internal heating term..
 
 There are 5 control parameters:
     Ra      - The flux rayleigh number of the convection.
+    H       - the heating strength
+     OR
     epsilon     - Epsilon (ε) specifies superadiabicity
+
     Pr      - The Prandtl number = (viscous diffusivity / thermal diffusivity)
     nrho    - The height of the box
     aspect  - The aspect ratio (Lx = aspect * Lz)
@@ -15,6 +18,7 @@ Usage:
 
 Options:
     --Ra=<Ra>                  Flux Ra of convection [default: 1e4]
+    --H=<H>                    Heating stength
     --epsilon=<epsilon>        Superadiabicity [default: 0.1]
     --Pr=<Prandtl>             Prandtl number = nu/kappa [default: 1]
     --gamma=<gamma>            Ratio of specific heats [default: 5/3]
@@ -22,7 +26,7 @@ Options:
     --aspect=<aspect>          Aspect ratio of domain [default: 4]
 
     --nz=<nz>                  Vertical resolution   [default: 64]
-    --ny=<ny>                  Horizontal (y) resolution [default:128]
+    --ny=<ny>                  Horizontal (y) resolution [default: 128]
     --nx=<nx>                  Horizontal (x) resolution [default: 128]
     --RK222                    Use RK222 timestepper (default: RK443)
     --SBDF2                    Use SBDF2 timestepper (default: RK443)
@@ -451,26 +455,16 @@ def initialize_output(solver, data_dir, mode='overwrite', output_dt=10, iter=np.
 
 def run_cartesian_convection(args):
     #############################################################################################
-    ### 1. Read in command-line args, set up data directory
-    data_dir = args['--root_dir'] + '/' + sys.argv[0].split('.py')[0]
-    data_dir += "_Ra{}_eps{}_nrho{}_Pr{}_gamma{:.2g}_a{}_{}x{}x{}".format(args['--Ra'], args['--epsilon'], args['--nrho'], args['--Pr'], float(Fraction(args['--gamma'])), args['--aspect'], args['--nx'],args['--ny'], args['--nz'])
-    if args['--label'] is not None:
-        data_dir += "_{}".format(args['--label'])
-    data_dir += '/'
-    if MPI.COMM_WORLD.rank == 0:
-        if not os.path.exists('{:s}'.format(data_dir)):
-            os.makedirs('{:s}'.format(data_dir))
-    logger.info("saving run in: {}".format(data_dir))
-
-    ########################################################################################
-    ### 2. Organize simulation parameters
+    ### 1. Read in command-line args, set up data directory and Organize simulation parameters
+    
+    
     aspect   = float(args['--aspect'])
     nx = int(args['--nx'])
     ny = int(args['--ny'])
     nz = int(args['--nz'])
     Ra = float(args['--Ra'])
     Pr = float(args['--Pr'])
-    epsilon = float(args['--epsilon'])
+    
     nrho = float(args['--nrho'])
     gamma = float(Fraction(args['--gamma']))
     max_dt = float(args['--max_dt'])
@@ -483,6 +477,16 @@ def run_cartesian_convection(args):
     g = Cp 
     T_ad_z = -g/Cp
 
+    # Heating
+    if args['--H'] is None:
+        epsilon = float(args['--epsilon'])
+        H = epsilon / (1 + m_ad - epsilon)
+    else:
+        logger.info('--H specified, overriding any value of --epsilon')
+        H = float(args['--H'])
+        epsilon = H * (m_ad + 1)/(H + 1)
+    
+    
     #Length scales
     Lz    = np.exp(nrho/np.abs(m_ad))-1
     Lx    = aspect * Lz
@@ -502,6 +506,18 @@ def run_cartesian_convection(args):
     Q_mag = κ/Lz * epsilon/(1+m_ad-epsilon)
     Ma = Q_mag**(1/3)
     t_heat = 1/Ma
+
+    # setup output dirs
+    data_dir = args['--root_dir'] + '/' + sys.argv[0].split('.py')[0]
+    data_dir += "_Ra{}_eps{:.3g}_nrho{}_Pr{}_gamma{:.2g}_a{}_{}x{}".format(args['--Ra'], epsilon, args['--nrho'], args['--Pr'], float(Fraction(args['--gamma'])), args['--aspect'], args['--nx'], args['--nz'])
+    if args['--label'] is not None:
+        data_dir += "_{}".format(args['--label'])
+    data_dir += '/'
+    if MPI.COMM_WORLD.rank == 0:
+        if not os.path.exists('{:s}'.format(data_dir)):
+            os.makedirs('{:s}'.format(data_dir))
+    logger.info("saving run in: {}".format(data_dir))
+
 
     #Adjust to account for expected velocities. and larger m = 0 diffusivities.
     logger.info("Running polytrope with the following parameters:")
