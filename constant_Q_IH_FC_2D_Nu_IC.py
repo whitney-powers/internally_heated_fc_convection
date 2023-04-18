@@ -192,7 +192,7 @@ def Nu_based_IC(Ra, epsilon, Nz=64, nrho=3, gamma=5/3, R=1, Pr=1, Ra_crit=None, 
     rho0['g'] =  T0['g']**m_ad
     m0 = rho0.integrate('z')['g'][0]
     
-    problem = de.NLBVP(domain, variables=['m', 'ln_rho'], ncc_cutoff=ncc_cutoff)
+    problem = de.NLBVP(domain, variables=['rho'], ncc_cutoff=ncc_cutoff)
     problem.parameters['Q'] = Q
     problem.parameters['g'] = g
     problem.parameters['R'] = R
@@ -200,20 +200,13 @@ def Nu_based_IC(Ra, epsilon, Nz=64, nrho=3, gamma=5/3, R=1, Pr=1, Ra_crit=None, 
     problem.parameters['T'] = T0+T1
     problem.parameters['Tz'] = T0_z + T1_z
 
-    problem.add_equation("dz(ln_rho)  = -Tz/T - g/R/T")
-    problem.add_equation("dz(m) = exp(ln_rho)")
-
-    problem.add_bc("left(m) = 0")
-    problem.add_bc("right(m) = m0")
-
+    problem.add_equation("dz(rho)  = -Tz*rho/T - g*rho/R/T")
+    problem.add_equation("integ(rho) = m0")
+    
     solver = problem.build_solver()
 
-    ln_rho = solver.state['ln_rho']
-    m = solver.state['m']
-    
-    ln_rho['g'] = np.log(rho0['g'])
-    rho0.antidifferentiate('z', ('left', 0), out=m)
-    
+    rho = solver.state['rho']
+        
     
     pert = solver.perturbations.data
     pert.fill(1+tolerance)
@@ -227,7 +220,7 @@ def Nu_based_IC(Ra, epsilon, Nz=64, nrho=3, gamma=5/3, R=1, Pr=1, Ra_crit=None, 
     logger.info('Run time: %.2f sec' %(end_time-start_time))
 
     ln_rho1 = domain.new_field()
-    ln_rho1['g'] = ln_rho['g'] - np.log(rho0['g'])
+    ln_rho1['g'] = np.log(rho['g']) - np.log(rho0['g'])
     
     return(T1, T1_z, ln_rho1, z)
    
