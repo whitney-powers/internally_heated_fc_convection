@@ -76,7 +76,7 @@ rho0['g'] =  T0['g']**m_ad
 m0 = rho0.integrate('z')['g'][0]
 
 # Setup problem
-problem = de.NLBVP(domain, variables=['T','Tz', 'm', 'ln_rho'], ncc_cutoff=ncc_cutoff)
+problem = de.NLBVP(domain, variables=['T','Tz', 'rho'], ncc_cutoff=ncc_cutoff)
 problem.parameters['Q'] = Q
 problem.parameters['g'] = g
 problem.parameters['R'] = R
@@ -87,26 +87,23 @@ problem.parameters['T0_z'] = T0_z
 
 
 problem.add_equation("-dz(Tz) = Q")
-problem.add_equation("dz(ln_rho)  = -Tz/T - g/R/T")
-problem.add_equation("dz(m) = exp(ln_rho)")
+problem.add_equation("dz(rho)  = -Tz*rho/T - g*rho/R/T")
 problem.add_equation("dz(T) - Tz = 0")
-problem.add_bc("left(m) = 0")
-problem.add_bc("right(m) = m0")
+problem.add_equation("integ(rho) = m0")
 problem.add_bc("right(T) = right(T0)")
 problem.add_bc("left(Tz) = left(T0_z)")
 
 # Setup initial guess
 solver = problem.build_solver()
 
-ln_rho = solver.state['ln_rho']
-m = solver.state['m']
+rho = solver.state['rho']
 T = solver.state['T']
 Tz = solver.state['Tz']
 
-ln_rho['g'] = np.log(rho0['g'])
+rho['g'] = rho0['g']
 T['g'] = T0['g']
 Tz['g'] = T0_z['g']
-rho0.antidifferentiate('z', ('left', 0), out=m)
+
 # Need m guess
 
 # Iterations
@@ -126,7 +123,8 @@ logger.info('Run time: %.2f sec' %(end_time-start_time))
 
 #plt.plot(z,T['g'])
 #plt.show()
-
+ln_rho = domain.new_field()
+ln_rho['g'] = np.log(rho['g'])
 ln_rho_z = domain.new_field()
 ln_rho.differentiate('z', out=ln_rho_z)
 
